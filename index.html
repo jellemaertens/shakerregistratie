@@ -194,15 +194,18 @@ button,input,select,textarea{font:inherit; color:inherit; font-feature-settings:
 button.ph-add{background:none; font:inherit; font-weight:600; font-size:.875rem}
 
 /* Camera */
-.cam{position:fixed; inset:0; z-index:55; background:#04100E; color:#fff; display:grid; grid-template-rows:auto minmax(0,1fr) auto}
-.cam-top{display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 16px; font-size:.9375rem}
-.cam-view{position:relative; display:grid; place-items:center; min-height:0; padding:0 16px}
-.cam-view video{max-width:100%; max-height:100%; border-radius:var(--r); background:#000}
+/* Het camerabeeld vult de ruimte tussen kop en knoppenbalk en wordt nooit groter dan die ruimte,
+   ook niet bij een staand beeld van de achtercamera; de knoppenbalk blijft zo altijd zichtbaar. */
+.cam{position:fixed; inset:0; height:100vh; height:100dvh; z-index:55; background:#04100E; color:#fff; display:flex; flex-direction:column; overflow:hidden}
+.cam-top{flex:none; display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 16px; font-size:.9375rem}
+.cam-view{position:relative; flex:1 1 auto; min-height:0; margin:0 16px}
+.cam-view video{position:absolute; inset:0; width:100%; height:100%; object-fit:contain; background:#000; border-radius:var(--r)}
 .cam-view .flash{position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .25s}
 .cam-view .flash.on{opacity:.7; transition:none}
-.cam-msg{max-width:46ch; text-align:center; color:#E2E7DC; line-height:1.5}
-.cam-bar{display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:12px; padding:14px 16px 20px}
-.cam-shoot{width:68px; height:68px; border-radius:50%; border:4px solid #fff; background:#A1D377; cursor:pointer}
+.cam-msg{position:absolute; inset:0; display:grid; place-items:center; padding:16px; text-align:center; color:#E2E7DC; line-height:1.5}
+.cam-bar{flex:none; position:relative; z-index:2; display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:16px; padding:14px 16px max(20px, env(safe-area-inset-bottom, 0px)); background:#04100E}
+.cam-shoot{display:inline-flex; align-items:center; gap:10px; min-height:58px; padding:0 26px 0 18px; border:3px solid #fff; border-radius:29px; background:#A1D377; color:#0D3932; font-weight:700; font-size:1.0625rem; cursor:pointer}
+.cam-shoot::before{content:""; width:22px; height:22px; border-radius:50%; background:#0D3932; box-shadow:0 0 0 3px #A1D377, 0 0 0 5px #0D3932}
 .cam-shoot:disabled{opacity:.4; cursor:default}
 .cam-btn{min-height:44px; padding:0 16px; border:1px solid rgba(255,255,255,.4); border-radius:var(--r); background:none; color:#fff; font-weight:600; cursor:pointer}
 .cam-btn.done{background:#A1D377; border-color:#A1D377; color:#0D3932}
@@ -376,7 +379,7 @@ button.ph-add{background:none; font:inherit; font-weight:600; font-size:.875rem}
   <div class="cam-view"><video id="cam-video" autoplay playsinline muted></video><p class="cam-msg" id="cam-msg" hidden></p><div class="flash" id="cam-flash"></div></div>
   <div class="cam-bar">
     <button type="button" class="cam-btn" id="cam-stop">Annuleren</button>
-    <button type="button" class="cam-shoot" id="cam-shoot" aria-label="Foto nemen"></button>
+    <button type="button" class="cam-shoot" id="cam-shoot">Foto nemen</button>
     <button type="button" class="cam-btn done" id="cam-klaar">Klaar</button>
   </div>
 </div>
@@ -917,23 +920,47 @@ async function openCamera() {
   await startStream();
 }
 
+// Achtercamera herkennen aan de naam: Windows-tablets en laptops geven "facingMode" vaak niet door.
+const ACHTER = /back|rear|achter|arri[eè]re|environment|world/i;
+
+async function vraagStream(deviceId) {
+  return navigator.mediaDevices.getUserMedia({
+    video: deviceId ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+                    : { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    audio: false
+  });
+}
+
+// deviceId: gekozen via "Andere camera". Zonder deviceId: de onthouden camera, anders de achtercamera.
 async function startStream(deviceId) {
   stopStream();
   const video = $("cam-video"), msg = $("cam-msg");
   msg.hidden = true; video.hidden = false; $("cam-shoot").disabled = true;
   try {
-    CAM.stream = await navigator.mediaDevices.getUserMedia({
-      video: deviceId ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
-                      : { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-      audio: false
-    });
+    const onthouden = lsGet("shaker-camera");
+    let stream;
+    if (deviceId) stream = await vraagStream(deviceId);
+    else {
+      try { stream = await vraagStream(onthouden || null); }
+      catch (e) { if (!onthouden) throw e; lsSet("shaker-camera", ""); stream = await vraagStream(null); } // onthouden camera bestaat niet meer
+    }
+    CAM.devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
+    let instellingen = stream.getVideoTracks()[0]?.getSettings() || {};
+    if (!deviceId && !onthouden && instellingen.facingMode !== "environment") {
+      const achter = CAM.devices.find(d => ACHTER.test(d.label));
+      if (achter && achter.deviceId !== instellingen.deviceId) {
+        stream.getTracks().forEach(t => t.stop());
+        stream = await vraagStream(achter.deviceId);
+        instellingen = stream.getVideoTracks()[0]?.getSettings() || {};
+      }
+    }
+    CAM.stream = stream;
     if ($("cam").hidden) return stopStream(); // intussen gesloten
-    video.srcObject = CAM.stream;
+    video.srcObject = stream;
     await video.play().catch(() => {});
     $("cam-shoot").disabled = false;
-    CAM.devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
-    const actief = CAM.stream.getVideoTracks()[0]?.getSettings().deviceId;
-    CAM.index = Math.max(0, CAM.devices.findIndex(d => d.deviceId === actief));
+    CAM.index = Math.max(0, CAM.devices.findIndex(d => d.deviceId === instellingen.deviceId));
+    if (deviceId) lsSet("shaker-camera", deviceId);
     $("cam-wissel").hidden = CAM.devices.length < 2;
   } catch (e) {
     video.hidden = true; msg.hidden = false;
