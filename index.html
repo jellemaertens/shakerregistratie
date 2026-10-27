@@ -1,0 +1,997 @@
+<!doctype html>
+<html lang="nl-BE">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Shakerregistratie</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Mona+Sans:wdth,wght@75..125,200..900&display=swap">
+<style>
+/* Layout: donkergroene kopband met logo; daaronder links de klantenlijst op Soft Green, rechts het klantdetail met machinekaarten.
+   Alle gegevens staan in een gedeelde SharePoint-map die de gebruiker kiest; deze pagina bevat zelf geen klantgegevens. */
+:root{
+  --head-bg:#0D3932; --head-fg:#FFFFFF; --head-muted:#B9CBBF; --head-accent:#A1D377;
+  --bg:#FFFFFF; --panel:#E2E7DC; --card:#FFFFFF; --fg:#10221E; --muted:#4D5F58;
+  --line:#CFD8CA; --line-strong:#A9B8A4; --field:#FFFFFF; --hover:rgba(13,57,50,.07);
+  --accent:#226E55; --accent-hover:#1A5844; --on-accent:#FFFFFF;
+  --sel:#0D3932; --on-sel:#FFFFFF;
+  --focus:#226E55; --photo-bg:#E2E7DC; --notice:#F7EBDD;
+  --s-goed:#226E55; --s-redelijk:#86BB57; --s-matig:#DC8B7A; --s-slecht:#B74433; --danger:#B74433;
+  --font:"Mona Sans", Arial, Helvetica, sans-serif;
+  --r:4px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0A211D; --panel:#0E2C27; --card:#11342D; --fg:#E8EEE3; --muted:#A3B5AB;
+    --line:#22463D; --line-strong:#36645A; --field:#0A211D; --hover:rgba(161,211,119,.08);
+    --accent:#A1D377; --accent-hover:#B8DF97; --on-accent:#0D3932;
+    --sel:#A1D377; --on-sel:#0D3932;
+    --focus:#A1D377; --photo-bg:#0E2C27; --notice:#33281F;
+    --s-goed:#5DB38A; --s-redelijk:#A1D377; --s-matig:#E59C87; --s-slecht:#E5705D; --danger:#EE8A78;
+    color-scheme:dark;
+  }
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg); color:var(--fg); font-family:var(--font); font-feature-settings:"ss03"; font-size:15px; line-height:1.5}
+img{max-width:100%}
+[hidden]{display:none!important}
+h1,h2,h3,h4{margin:0; line-height:1.15; text-wrap:balance; font-weight:700}
+p{margin:0}
+button,input,select,textarea{font:inherit; color:inherit; font-feature-settings:"ss03"}
+:focus-visible{outline:2px solid var(--focus); outline-offset:2px}
+.sr{position:absolute!important; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap}
+.num{font-variant-numeric:tabular-nums lining-nums}
+
+/* Kopband */
+.top{background:var(--head-bg); color:var(--head-fg)}
+.top-in{max-width:1440px; margin:0 auto; display:flex; flex-wrap:wrap; align-items:center; gap:16px 32px; padding:18px 24px}
+.logo{height:46px; width:auto; display:block}
+.top-title{display:grid; gap:2px; padding-left:24px; border-left:1px solid rgba(255,255,255,.22); min-width:0}
+.top-title h1{font-size:1.375rem}
+.top-title p{color:var(--head-muted); font-size:.875rem}
+.stats{margin:0 0 0 auto; display:flex; gap:28px}
+.stats div{display:grid}
+.stats dt{color:var(--head-muted); font-size:.75rem; font-stretch:87.5%}
+.stats dd{margin:0; font-size:1.5rem; font-weight:700; line-height:1.1}
+.stats .warn dd{color:var(--head-accent)}
+
+/* Startscherm (map kiezen) */
+.start{max-width:1440px; margin:0 auto; padding:48px 24px 80px}
+.start-card{max-width:640px; display:grid; gap:18px}
+.start-card h2{font-size:clamp(1.5rem, 3vw, 2rem)}
+.start-card p{color:var(--muted); max-width:62ch}
+.start-card .steps{color:var(--fg)}
+.start-card code{font-family:inherit; font-weight:650; background:var(--panel); padding:1px 6px; border-radius:var(--r)}
+.start-actions{display:flex; flex-wrap:wrap; gap:10px; align-items:center}
+
+/* App-raster */
+.app{max-width:1440px; margin:0 auto; display:grid; grid-template-columns:minmax(280px, 360px) minmax(0,1fr); min-height:calc(100vh - 82px)}
+.side{background:var(--panel); border-right:1px solid var(--line); display:flex; flex-direction:column; position:sticky; top:0; align-self:start; height:100vh; min-width:0}
+.side-tools{display:grid; gap:10px; padding:18px 16px 12px; border-bottom:1px solid var(--line)}
+.search{width:100%; padding:10px 12px; border:1px solid var(--line-strong); border-radius:var(--r); background:var(--field)}
+.filters{display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center}
+.filters select{padding:7px 8px; border:1px solid var(--line-strong); border-radius:var(--r); background:var(--field); max-width:100%}
+.check{display:inline-flex; gap:6px; align-items:center; font-size:.875rem; cursor:pointer}
+.check input{accent-color:var(--accent); width:16px; height:16px}
+.count{font-size:.8125rem; color:var(--muted); font-stretch:87.5%}
+.klanten{list-style:none; margin:0; padding:6px 0 12px; overflow:auto; flex:1; min-height:0}
+.klant{width:100%; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 10px; align-items:center; text-align:left;
+  background:none; border:0; padding:10px 16px; cursor:pointer}
+.klant:hover{background:var(--hover)}
+.klant.on{background:var(--sel); color:var(--on-sel)}
+.k-naam{font-weight:600; line-height:1.25; overflow-wrap:anywhere}
+.k-sub{grid-column:1; font-size:.8125rem; color:var(--muted); font-stretch:87.5%}
+.klant.on .k-sub{color:inherit; opacity:.75}
+.k-badge{grid-column:2; grid-row:1 / span 2; display:inline-flex; align-items:center; gap:6px; font-size:.8125rem; font-weight:600; font-variant-numeric:tabular-nums}
+.k-badge .n{min-width:26px; padding:2px 7px; border-radius:var(--r); background:var(--card); color:var(--fg); text-align:center; border:1px solid var(--line)}
+.klant.on .k-badge .n{border-color:transparent}
+.dot{width:9px; height:9px; border-radius:50%; flex:none; display:inline-block}
+.d-goed{background:var(--s-goed)} .d-redelijk{background:var(--s-redelijk)} .d-matig{background:var(--s-matig)} .d-slecht{background:var(--s-slecht)}
+.empty-list{padding:24px 16px; color:var(--muted); font-size:.875rem}
+.map-info{display:grid; gap:4px; padding:12px 16px 16px; border-top:1px solid var(--line); font-size:.8125rem; color:var(--muted)}
+.map-info b{color:var(--fg); font-weight:600; overflow-wrap:anywhere}
+.map-info .row-btns{display:flex; flex-wrap:wrap; gap:4px 14px}
+
+/* Detail */
+.detail{min-width:0; padding:28px clamp(16px, 3vw, 40px) 64px}
+.detail-in{max-width:1040px; display:grid; gap:28px}
+.back{display:none; background:none; border:0; padding:4px 0; color:var(--accent); font-weight:600; cursor:pointer; justify-self:start}
+.k-head{display:grid; grid-template-columns:minmax(0,1fr) auto; gap:16px 24px; align-items:start; padding-bottom:24px; border-bottom:1px solid var(--line)}
+.k-head h2{font-size:clamp(1.5rem, 2.6vw, 2rem); overflow-wrap:anywhere}
+.k-meta{grid-column:1 / -1; display:grid; grid-template-columns:repeat(auto-fit, minmax(170px, 1fr)); gap:12px 24px; margin:0}
+.k-meta dt{font-size:.75rem; color:var(--muted); font-stretch:87.5%}
+.k-meta dd{margin:0; overflow-wrap:anywhere}
+.k-regels{grid-column:1 / -1}
+.k-regels dd{font-size:.875rem; color:var(--muted)}
+.tag{display:inline-block; margin-top:8px; padding:2px 8px; border-radius:var(--r); background:var(--panel); font-size:.8125rem; font-weight:600; font-stretch:87.5%}
+.btn{display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:11px 18px; border:0; border-radius:var(--r);
+  background:var(--accent); color:var(--on-accent); font-weight:650; cursor:pointer; white-space:nowrap}
+.btn:hover{background:var(--accent-hover)}
+.btn:disabled{opacity:.5; cursor:default}
+.btn-ghost{padding:10px 14px; border:1px solid var(--line-strong); border-radius:var(--r); background:transparent; font-weight:600; cursor:pointer}
+.btn-ghost:hover{background:var(--hover)}
+.btn-link{background:none; border:0; padding:4px 0; color:var(--accent); font-weight:600; cursor:pointer}
+.danger{color:var(--danger)}
+.sec-head{display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:14px}
+.sec-head h3{font-size:1.125rem}
+.sec-head span{color:var(--muted); font-size:.875rem}
+
+.machines{display:grid; grid-template-columns:repeat(auto-fill, minmax(280px, 1fr)); gap:18px}
+.m-card{display:flex; flex-direction:column; background:var(--card); border:1px solid var(--line); border-radius:var(--r); overflow:hidden; min-width:0}
+.m-foto{position:relative; aspect-ratio:4 / 3; max-width:100%; background:var(--photo-bg); border:0; padding:0; display:block; width:100%; cursor:zoom-in}
+.m-foto img{width:100%; height:100%; object-fit:cover; display:block}
+.m-foto.none{cursor:default; display:grid; place-items:center; color:var(--muted); font-size:.875rem}
+.m-foto .cnt{position:absolute; right:8px; bottom:8px; padding:2px 8px; border-radius:var(--r); background:rgba(13,57,50,.85); color:#fff; font-size:.75rem; font-weight:600}
+.m-body{display:grid; gap:12px; padding:16px; flex:1; align-content:start}
+.m-merk{font-size:.8125rem; color:var(--muted); font-weight:600; font-stretch:87.5%}
+.m-body h4{font-size:1.25rem; overflow-wrap:anywhere}
+.specs{display:grid; grid-template-columns:1fr 1fr; gap:10px 16px; margin:0}
+.specs dt{font-size:.75rem; color:var(--muted); font-stretch:87.5%}
+.specs dd{margin:0; font-weight:600; font-variant-numeric:tabular-nums}
+.chip{display:inline-flex; align-items:center; gap:7px; font-weight:600}
+.m-note{font-size:.875rem; color:var(--muted); white-space:pre-line; overflow-wrap:anywhere}
+.m-foot{display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 16px; border-top:1px solid var(--line); font-size:.8125rem; color:var(--muted)}
+
+/* Overzicht */
+.intro{display:grid; gap:8px; max-width:62ch}
+.intro h2{font-size:clamp(1.5rem, 2.6vw, 2rem)}
+.intro p{color:var(--muted)}
+.rows{list-style:none; margin:0; padding:0; border:1px solid var(--line); border-radius:var(--r); background:var(--card); overflow:hidden}
+.rows li + li{border-top:1px solid var(--line)}
+.row{width:100%; display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) auto; gap:4px 16px; align-items:center; text-align:left;
+  background:none; border:0; padding:12px 16px; cursor:pointer}
+.row:hover{background:var(--hover)}
+.row b{font-weight:600; overflow-wrap:anywhere}
+.row .sub{display:block; font-size:.8125rem; color:var(--muted)}
+.row .st{display:flex; gap:14px; font-size:.8125rem; flex-wrap:wrap}
+.row .when{font-size:.8125rem; color:var(--muted); white-space:nowrap}
+.notice{padding:14px 16px; border-radius:var(--r); background:var(--notice); font-size:.9375rem; max-width:70ch}
+.empty{display:grid; gap:10px; padding:28px; border:1px dashed var(--line-strong); border-radius:var(--r); color:var(--muted); max-width:62ch}
+.empty strong{color:var(--fg); font-size:1.0625rem}
+.steps{margin:0; padding-left:20px; display:grid; gap:6px}
+.legend{display:flex; flex-wrap:wrap; gap:8px 18px; font-size:.8125rem; color:var(--muted)}
+.legend span{display:inline-flex; gap:6px; align-items:center}
+.opt{font-weight:400; color:var(--muted)}
+.hint{font-size:.8125rem; color:var(--muted)}
+
+/* Formulier (zijpaneel) */
+.sheet{position:fixed; inset:0; z-index:40; display:flex; justify-content:flex-end}
+.sheet-back{position:absolute; inset:0; background:rgba(5,20,17,.55)}
+.panel{position:relative; width:min(600px, 100%); height:100%; overflow:auto; background:var(--bg); display:flex; flex-direction:column}
+.panel-head{display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 12px; padding:22px 24px 18px; background:var(--head-bg); color:var(--head-fg)}
+.panel-head p{color:var(--head-muted); font-size:.875rem; overflow-wrap:anywhere}
+.panel-head h2{font-size:1.5rem}
+.x{grid-row:1 / span 2; grid-column:2; width:40px; height:40px; border:1px solid rgba(255,255,255,.3); border-radius:var(--r); background:none; color:var(--head-fg); font-size:1.4rem; line-height:1; cursor:pointer}
+.panel-body{display:grid; gap:22px; padding:24px}
+.f-grid{display:grid; grid-template-columns:1fr 1fr; gap:18px 16px}
+.f{display:grid; gap:6px; min-width:0}
+.f label, .f .lbl, .seg legend{font-weight:600; font-size:.9375rem}
+.f input, .f textarea{width:100%; padding:10px 12px; border:1px solid var(--line-strong); border-radius:var(--r); background:var(--field)}
+.f input[aria-invalid="true"]{border-color:var(--danger); box-shadow:inset 0 0 0 1px var(--danger)}
+.err{font-size:.8125rem; color:var(--danger); font-weight:600}
+.err:empty{display:none}
+.seg{border:0; margin:0; padding:0; min-width:0}
+.seg legend{padding:0; margin-bottom:8px}
+.seg-opts{display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:6px}
+.seg-opts input{position:absolute; opacity:0; width:1px; height:1px}
+.seg-opts label{display:flex; align-items:center; justify-content:center; gap:8px; padding:10px 6px; border:1px solid var(--line-strong); border-radius:var(--r);
+  background:var(--field); cursor:pointer; font-size:.9375rem}
+.seg-opts input:checked + label{border-color:var(--fg); box-shadow:inset 0 0 0 1px var(--fg); font-weight:650}
+.seg-opts input:focus-visible + label{outline:2px solid var(--focus); outline-offset:2px}
+.ph-grid{display:grid; grid-template-columns:repeat(auto-fill, minmax(96px, 1fr)); gap:8px}
+.ph{position:relative; aspect-ratio:1; max-width:100%; border-radius:var(--r); overflow:hidden; background:var(--photo-bg)}
+.ph img{width:100%; height:100%; object-fit:cover; display:block}
+.ph.busy::after{content:"Verkleinen…"; position:absolute; inset:0; display:grid; place-items:center; background:rgba(13,57,50,.6); color:#fff; font-size:.75rem; font-weight:600}
+.ph.broken::after, .m-foto.broken::after{content:"Foto nog niet beschikbaar"; position:absolute; inset:0; display:grid; place-items:center; padding:6px; text-align:center; color:var(--muted); font-size:.75rem; background:var(--photo-bg)}
+.ph .rm{position:absolute; top:4px; right:4px; width:28px; height:28px; border:0; border-radius:var(--r); background:rgba(13,57,50,.85); color:#fff; font-size:1rem; line-height:1; cursor:pointer; z-index:1}
+.ph-add{display:grid; place-items:center; aspect-ratio:1; max-width:100%; border:1px dashed var(--line-strong); border-radius:var(--r); color:var(--accent); font-weight:600; font-size:.875rem; text-align:center; cursor:pointer; padding:8px}
+.ph-add:hover{background:var(--hover)}
+.panel-foot{margin-top:auto; display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:16px 24px; border-top:1px solid var(--line); background:var(--bg); position:sticky; bottom:0}
+.panel-foot .spacer{flex:1}
+.confirm{display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:.875rem; font-weight:600}
+.btn-danger{padding:9px 12px; border:0; border-radius:var(--r); background:var(--s-slecht); color:#fff; font-weight:650; cursor:pointer}
+.form-err{color:var(--danger); font-weight:600; font-size:.875rem}
+.form-err:empty{display:none}
+
+/* Fotoviewer */
+.lightbox{position:fixed; inset:0; z-index:50; background:rgba(4,16,14,.94); display:grid; grid-template-rows:auto minmax(0,1fr) auto; color:#fff}
+.lb-top{display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 16px; font-size:.875rem}
+.lb-img{display:grid; place-items:center; min-height:0; padding:0 16px}
+.lb-img img{max-width:100%; max-height:100%; object-fit:contain; border-radius:var(--r)}
+.lb-nav{display:flex; justify-content:center; gap:12px; padding:12px 16px 18px}
+.lb-btn{min-width:44px; height:44px; padding:0 14px; border:1px solid rgba(255,255,255,.35); border-radius:var(--r); background:none; color:#fff; font-size:1rem; cursor:pointer}
+.lb-btn:disabled{opacity:.3; cursor:default}
+
+.toast{position:fixed; left:50%; bottom:20px; transform:translate(-50%, 12px); z-index:60;
+  padding:10px 16px; border-radius:var(--r); background:var(--head-bg); color:#fff; font-weight:600; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; max-width:calc(100% - 32px)}
+.toast.on{opacity:1; transform:translate(-50%, 0)}
+
+@media (max-width: 860px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .side{position:static; height:auto; border-right:0}
+  .klanten{overflow:visible}
+  .app.open .side{display:none}
+  .app:not(.open) .detail{display:none}
+  .back{display:inline-block}
+  .stats{margin-left:0; width:100%; gap:24px}
+  .top-title{padding-left:0; border-left:0}
+}
+@media (max-width: 520px){
+  .top-in, .start{padding-left:16px; padding-right:16px}
+  .f-grid{grid-template-columns:1fr}
+  .seg-opts{grid-template-columns:repeat(2, minmax(0,1fr))}
+  .k-head{grid-template-columns:minmax(0,1fr)}
+  .k-head .btn{justify-self:start}
+  .row{grid-template-columns:minmax(0,1fr)}
+  .panel-head, .panel-body, .panel-foot{padding-left:16px; padding-right:16px}
+}
+@media (prefers-reduced-motion: reduce){ .toast{transition:none} }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-in">
+    <img class="logo" src="boss-logo-wit.png" alt="BOSS paints" width="131" height="46">
+    <div class="top-title">
+      <h1>Shakerregistratie</h1>
+      <p>Welke shakers staan er bij onze klanten, en in welke staat?</p>
+    </div>
+    <dl class="stats" id="stats">
+      <div><dt>Machines</dt><dd class="num" id="st-m">–</dd></div>
+      <div><dt>Klanten met machines</dt><dd class="num" id="st-k">–</dd></div>
+      <div class="warn"><dt>Aandacht nodig</dt><dd class="num" id="st-a">–</dd></div>
+    </dl>
+  </div>
+</header>
+
+<section class="start" id="start"><div class="start-card" id="start-card"></div></section>
+
+<div class="app" id="app" hidden>
+  <aside class="side" aria-label="Klanten">
+    <div class="side-tools">
+      <label for="q" class="sr">Zoek een klant</label>
+      <input id="q" class="search" type="search" placeholder="Zoek op naam, gemeente of klantnummer" autocomplete="off">
+      <div class="filters">
+        <label for="groep" class="sr">Groep</label>
+        <select id="groep"><option value="">Alle groepen</option></select>
+        <label class="check"><input type="checkbox" id="metMachines"> Enkel met machines</label>
+      </div>
+      <p class="count" id="count"></p>
+    </div>
+    <ul class="klanten" id="klanten"></ul>
+    <div class="map-info">
+      <span>Map: <b id="map-naam"></b></span>
+      <span id="bron"></span>
+      <span class="row-btns"><button type="button" class="btn-link" id="ververs">Vernieuwen</button><button type="button" class="btn-link" data-kies>Andere map kiezen</button></span>
+    </div>
+  </aside>
+  <main class="detail" id="detail"><div class="detail-in"></div></main>
+</div>
+
+<datalist id="dl-merk"><option value="Fast &amp; Fluid"><option value="Corob"><option value="Harbil"><option value="Santint"><option value="Collomix"></datalist>
+<datalist id="dl-type"><option value="HA 180"><option value="HA 480"><option value="D410"><option value="D600"><option value="D700"></datalist>
+
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-back" data-close></div>
+  <form class="panel" id="form" novalidate role="dialog" aria-modal="true" aria-labelledby="f-title">
+    <div class="panel-head">
+      <p id="f-klant"></p>
+      <h2 id="f-title">Machine toevoegen</h2>
+      <button type="button" class="x" data-close aria-label="Sluiten">×</button>
+    </div>
+    <div class="panel-body">
+      <div class="f-grid">
+        <div class="f">
+          <label for="f-merk">Merk</label>
+          <input id="f-merk" list="dl-merk" autocomplete="off" placeholder="bv. Fast &amp; Fluid">
+          <p class="err" id="e-merk"></p>
+        </div>
+        <div class="f">
+          <label for="f-type">Type shaker</label>
+          <input id="f-type" list="dl-type" autocomplete="off" placeholder="bv. HA 480">
+          <p class="err" id="e-type"></p>
+        </div>
+        <div class="f">
+          <label for="f-jaar">Bouwjaar</label>
+          <input id="f-jaar" type="number" inputmode="numeric" min="1970" step="1" placeholder="bv. 2016">
+          <p class="err" id="e-jaar"></p>
+        </div>
+        <div class="f">
+          <label for="f-cycli">Aantal cycli</label>
+          <input id="f-cycli" type="number" inputmode="numeric" min="0" step="1" placeholder="Stand van de teller">
+          <p class="err" id="e-cycli"></p>
+        </div>
+      </div>
+
+      <fieldset class="seg">
+        <legend>Algemene staat</legend>
+        <div class="seg-opts" id="seg-staat"></div>
+        <p class="err" id="e-staat"></p>
+      </fieldset>
+
+      <fieldset class="seg">
+        <legend>Staat klemplaat</legend>
+        <div class="seg-opts" id="seg-klemplaat"></div>
+        <p class="err" id="e-klemplaat"></p>
+      </fieldset>
+
+      <div class="f">
+        <label for="f-note">Opmerking <span class="opt">(optioneel)</span></label>
+        <textarea id="f-note" rows="3" placeholder="bv. klemplaat slipt bij grote potten"></textarea>
+      </div>
+
+      <div class="f">
+        <span class="lbl">Foto's <span class="opt">(optioneel)</span></span>
+        <input id="f-fotos" class="sr" type="file" accept="image/*" multiple>
+        <div class="ph-grid" id="ph-grid"></div>
+        <p class="hint">Neem een foto van de machine, het typeplaatje en de klemplaat.</p>
+        <p class="err" id="e-foto"></p>
+      </div>
+
+      <div class="f">
+        <label for="f-door">Geregistreerd door</label>
+        <input id="f-door" autocomplete="name" placeholder="Je voor- en achternaam">
+        <p class="err" id="e-door"></p>
+      </div>
+    </div>
+    <div class="panel-foot">
+      <div id="del-zone"></div>
+      <span class="spacer"></span>
+      <p class="form-err" id="e-form"></p>
+      <button type="button" class="btn-ghost" data-close>Annuleren</button>
+      <button type="submit" class="btn" id="f-save">Bewaren</button>
+    </div>
+  </form>
+</div>
+
+<div class="lightbox" id="lightbox" hidden role="dialog" aria-modal="true" aria-label="Foto bekijken">
+  <div class="lb-top"><span id="lb-cap"></span><button type="button" class="lb-btn" id="lb-close" aria-label="Sluiten">×</button></div>
+  <div class="lb-img"><img id="lb-img" alt=""></div>
+  <div class="lb-nav"><button type="button" class="lb-btn" id="lb-prev" aria-label="Vorige foto">←</button><button type="button" class="lb-btn" id="lb-next" aria-label="Volgende foto">→</button></div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+const MAP_NAAM = "Shakers en mengers klanten";
+const STATEN = [["goed","Goed"],["redelijk","Redelijk"],["matig","Matig"],["slecht","Slecht"]];
+const STAAT_LABEL = Object.fromEntries(STATEN);
+const AANDACHT = new Set(["matig","slecht"]);
+const JAAR_NU = new Date().getFullYear();
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const norm = s => String(s ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const fmtNum = n => new Intl.NumberFormat("nl-BE").format(n);
+const fmtDatum = t => new Intl.DateTimeFormat("nl-BE", {day:"numeric", month:"short", year:"numeric"}).format(new Date(t));
+const nieuwId = () => Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7);
+
+const state = {
+  status: "start", // start | unsupported | kies | toestemming | laden | geen-klanten | fout | ok
+  dir: null, machinesDir: null, fotosDir: null, bron: "", fout: "",
+  klanten: [], byKey: new Map(), machines: [], byKlant: new Map(), sig: "",
+  sel: null, q: "", groep: "", metMachines: false
+};
+
+/* ---------- Opslag van de gekozen map (IndexedDB, enkel in deze browser) ---------- */
+function idb() {
+  return new Promise((res, rej) => {
+    const r = indexedDB.open("shakerregistratie", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("kv");
+    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+  });
+}
+async function idbGet(k) { const d = await idb(); return new Promise((res, rej) => { const q = d.transaction("kv").objectStore("kv").get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
+async function idbSet(k, v) { const d = await idb(); return new Promise((res, rej) => { const t = d.transaction("kv", "readwrite"); t.objectStore("kv").put(v, k); t.oncomplete = res; t.onerror = () => rej(t.error); }); }
+function lsGet(k) { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* niet erg */ } }
+
+/* ---------- Map kiezen en lezen ---------- */
+async function init() {
+  if (!("showDirectoryPicker" in window)) { state.status = "unsupported"; return render(); }
+  let h = null;
+  try { h = await idbGet("map"); } catch (e) { /* geen opgeslagen map */ }
+  if (!h) { state.status = "kies"; return render(); }
+  state.dir = h;
+  if (await h.queryPermission({ mode: "readwrite" }) === "granted") return laadMap();
+  state.status = "toestemming"; render();
+}
+
+async function kiesMap() {
+  try {
+    const h = await window.showDirectoryPicker({ id: "shakerregistratie", mode: "readwrite" });
+    state.dir = h;
+    try { await idbSet("map", h); } catch (e) { /* map wordt dan elke keer opnieuw gevraagd */ }
+    await laadMap();
+  } catch (e) {
+    if (e && e.name === "AbortError") return;
+    state.status = "fout"; state.fout = "De map kon niet geopend worden. Kies een map die op deze pc gesynchroniseerd is."; render();
+  }
+}
+
+async function geefToestemming() {
+  if (await state.dir.requestPermission({ mode: "readwrite" }) === "granted") laadMap();
+}
+
+async function laadMap() {
+  state.status = "laden"; render();
+  try {
+    const rijen = await leesKlanten(state.dir);
+    state.machinesDir = await state.dir.getDirectoryHandle("machines", { create: true });
+    state.fotosDir = await state.dir.getDirectoryHandle("fotos", { create: true });
+    zetKlanten(rijen);
+    machineCache.clear(); fotoUrls.clear();
+    await leesMachines();
+    state.status = "ok";
+  } catch (e) {
+    if (e && e.code === "geen-klanten") state.status = "geen-klanten";
+    else { state.status = "fout"; state.fout = "De map kon niet gelezen worden. Controleer of OneDrive de map gesynchroniseerd heeft en probeer opnieuw."; }
+  }
+  render();
+}
+
+async function leesTekst(file) {
+  const buf = await file.arrayBuffer();
+  let t;
+  try { t = new TextDecoder("utf-8", { fatal: true }).decode(buf); } catch (e) { t = new TextDecoder("windows-1252").decode(buf); }
+  return t.replace(/^﻿/, "");
+}
+
+function parseCsv(text) {
+  const rows = []; let row = [], cel = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { cel += '"'; i++; } else q = false; } else cel += c; }
+    else if (c === '"') q = true;
+    else if (c === ";") { row.push(cel); cel = ""; }
+    else if (c === "\n" || c === "\r") { if (c === "\r" && text[i + 1] === "\n") i++; row.push(cel); rows.push(row); row = []; cel = ""; }
+    else cel += c;
+  }
+  if (cel || row.length) { row.push(cel); rows.push(row); }
+  return rows.filter(r => r.some(x => x.trim()));
+}
+
+// Klantenlijst: de recentste klanten*.csv-export in de map, anders klanten.json.
+async function leesKlanten(dir) {
+  let csv = null, json = null;
+  for await (const [name, h] of dir.entries()) {
+    if (h.kind !== "file") continue;
+    if (/^klanten.*\.csv$/i.test(name)) { const f = await h.getFile(); if (!csv || f.lastModified > csv.lastModified) csv = f; }
+    else if (name.toLowerCase() === "klanten.json") json = await h.getFile();
+  }
+  if (csv) {
+    const [kop, ...rest] = parseCsv(await leesTekst(csv));
+    const ix = Object.fromEntries(kop.map((n, i) => [n.trim().toLowerCase(), i]));
+    if (!("naam" in ix)) throw { code: "geen-klanten" };
+    const v = (r, n) => (n in ix ? (r[ix[n]] || "") : "").trim();
+    state.bron = csv.name;
+    return rest.map(r => [v(r, "nummer"), v(r, "naam"), v(r, "groep"), v(r, "adres"), v(r, "postcode"), v(r, "gemeente"), v(r, "land"), v(r, "telefoon"), v(r, "email")]).filter(r => r[1]);
+  }
+  if (json) { state.bron = json.name; return JSON.parse(await leesTekst(json)); }
+  throw { code: "geen-klanten" };
+}
+
+// Rijen met hetzelfde klantnummer en adres vormen samen één winkel
+// (bv. "Colora Aalst M1 D410" + "M2 D700" + "M3 F&F HA480" -> "Colora Aalst").
+const winkelNaam = naam => naam.replace(/\s+[MW]\d+\b.*$/i, "").trim() || naam;
+function zetKlanten(rows) {
+  const winkels = new Map();
+  for (const [nr, naam, groep, adres, pc, gemeente, land, tel, email] of rows) {
+    const key = [nr, adres, pc].join("|");
+    let w = winkels.get(key);
+    if (!w) winkels.set(key, w = { key, nr, namen: [], regels: [], groep: "", adres, pc, gemeente, land, tel: "", email: "", rijKeys: [] });
+    if (w.regels.includes(naam)) continue;
+    const kort = winkelNaam(naam);
+    if (!w.namen.includes(kort)) w.namen.push(kort);
+    w.regels.push(naam);
+    w.rijKeys.push(nr + "|" + naam);
+    const g = groep ? groep[0].toUpperCase() + groep.slice(1) : "";
+    if (g.length > w.groep.length) w.groep = g;
+    w.tel = w.tel || tel; w.email = w.email || email;
+  }
+  state.klanten = [...winkels.values()].map(w => ({
+    ...w, naam: w.namen.join(" / "), zoek: norm([w.nr, ...w.regels, w.gemeente, w.pc].join(" "))
+  })).sort((a, b) => a.naam.localeCompare(b.naam, "nl"));
+  state.byKey = new Map();
+  state.klanten.forEach(k => { state.byKey.set(k.key, k); k.rijKeys.forEach(rk => state.byKey.set(rk, k)); });
+  const groepen = [...new Set(state.klanten.map(k => k.groep).filter(Boolean))].sort((a, b) => a.localeCompare(b, "nl"));
+  $("groep").innerHTML = `<option value="">Alle groepen</option>` + groepen.map(g => `<option value="${esc(g)}">${esc(g)}</option>`).join("");
+  $("groep").value = groepen.includes(state.groep) ? state.groep : (state.groep = "");
+  if (state.sel && !state.byKey.has(state.sel)) state.sel = null;
+}
+
+// Eén JSON-bestand per machine in /machines; onveranderde bestanden worden niet opnieuw gelezen.
+const machineCache = new Map();
+async function leesMachines() {
+  const seen = new Set(), out = [];
+  for await (const [name, h] of state.machinesDir.entries()) {
+    if (h.kind !== "file" || !name.endsWith(".json")) continue;
+    seen.add(name);
+    const c = machineCache.get(name);
+    try {
+      const f = await h.getFile();
+      if (c && c.lm === f.lastModified && c.size === f.size) { out.push(c.data); continue; }
+      const data = { ...JSON.parse(await f.text()), id: name.slice(0, -5) };
+      machineCache.set(name, { lm: f.lastModified, size: f.size, data });
+      out.push(data);
+    } catch (e) { if (c) out.push(c.data); /* half gesynchroniseerd: volgende keer opnieuw */ }
+  }
+  for (const k of [...machineCache.keys()]) if (!seen.has(k)) machineCache.delete(k);
+  state.machines = out;
+  indexMachines();
+  const sig = out.map(m => m.id + ":" + (m.updatedAt || 0)).sort().join(",");
+  const veranderd = sig !== state.sig;
+  state.sig = sig;
+  return veranderd;
+}
+
+function indexMachines() {
+  state.byKlant = new Map();
+  for (const m of state.machines) {
+    const key = state.byKey.get(m.klant)?.key || m.klant;
+    if (!state.byKlant.has(key)) state.byKlant.set(key, []);
+    state.byKlant.get(key).push(m);
+  }
+  for (const list of state.byKlant.values()) list.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+}
+const heeftAandacht = m => AANDACHT.has(m.staat) || AANDACHT.has(m.klemplaat);
+
+async function schrijfBestand(dir, name, inhoud) {
+  const h = await dir.getFileHandle(name, { create: true });
+  const w = await h.createWritable();
+  await w.write(inhoud);
+  await w.close();
+}
+async function verwijderBestand(dir, name) { try { await dir.removeEntry(name); } catch (e) { /* al weg */ } }
+
+// Foto's worden pas geladen wanneer ze getoond worden; de URL blijft bewaard zolang de pagina open is.
+const fotoUrls = new Map();
+function fotoUrl(name) {
+  if (!fotoUrls.has(name)) {
+    const p = state.fotosDir.getFileHandle(name).then(h => h.getFile()).then(f => URL.createObjectURL(f));
+    p.catch(() => fotoUrls.delete(name));
+    fotoUrls.set(name, p);
+  }
+  return fotoUrls.get(name);
+}
+function laadFotos(root) {
+  root.querySelectorAll("img[data-file]").forEach(img => {
+    fotoUrl(img.dataset.file).then(u => { img.src = u; }).catch(() => img.closest(".ph, .m-foto")?.classList.add("broken"));
+  });
+}
+
+// Wijzigingen van collega's komen binnen via OneDrive; we kijken geregeld of er iets veranderde.
+async function ververs(handmatig) {
+  if (state.status !== "ok" || $("sheet").hidden === false) return;
+  try {
+    if (await leesMachines()) render();
+    if (handmatig) toast("Bijgewerkt");
+  } catch (e) { if (handmatig) toast("Vernieuwen lukte niet"); }
+}
+setInterval(() => { if (document.visibilityState === "visible") ververs(false); }, 20000);
+window.addEventListener("focus", () => ververs(false));
+$("ververs").addEventListener("click", () => ververs(true));
+
+/* ---------- Weergave ---------- */
+function render() {
+  const ok = state.status === "ok";
+  $("start").hidden = ok;
+  $("app").hidden = !ok;
+  renderStats();
+  if (!ok) return renderStart();
+  $("map-naam").textContent = state.dir ? state.dir.name : "";
+  $("bron").textContent = state.bron ? "Klantenlijst: " + state.bron : "";
+  renderList(); renderDetail();
+}
+
+function renderStart() {
+  const naam = esc(state.dir ? state.dir.name : MAP_NAAM);
+  const stappen = `<ol class="steps">
+      <li>Open in SharePoint de map <code>${esc(MAP_NAAM)}</code> (Diensten › Gedeelde documenten › General › MyMx) en klik op <b>Synchroniseren</b> of <b>Snelkoppeling toevoegen aan Mijn bestanden</b>.</li>
+      <li>Klik hieronder op <b>Map kiezen</b> en selecteer die map in Verkenner.</li>
+      <li>Klik op <b>Wijzigingen toestaan</b> zodat de pagina machines en foto's in de map kan bewaren.</li>
+    </ol>`;
+  const v = {
+    start: `<h2>Even laden…</h2>`,
+    unsupported: `<h2>Open deze pagina in Edge of Chrome</h2><p>De shakerregistratie bewaart alles in een gedeelde SharePoint-map. Alleen Microsoft Edge en Google Chrome op een pc kunnen zo'n map openen. Andere browsers en gsm's kunnen dat niet.</p>`,
+    kies: `<h2>Kies de gedeelde map</h2><p>Alle machines, foto's en de klantenlijst staan in een gedeelde SharePoint-map. Zo zien jij en je collega's dezelfde registraties.</p>${stappen}
+      <div class="start-actions"><button type="button" class="btn" data-kies>Map kiezen</button></div>`,
+    toestemming: `<h2>Verder met de map ${naam}</h2><p>Je browser vraagt opnieuw toestemming om de map te gebruiken. Dat is één klik.</p>
+      <div class="start-actions"><button type="button" class="btn" id="go">Doorgaan</button><button type="button" class="btn-ghost" data-kies>Andere map kiezen</button></div>`,
+    laden: `<h2>Map ${naam} lezen…</h2><p>Bij de eerste keer haalt OneDrive de bestanden op. Dat kan even duren.</p>`,
+    "geen-klanten": `<h2>Geen klantenlijst gevonden</h2><p>In de map ${naam} staat geen klantenlijst. Zet je export (bv. <code>klanten-2026-10-16.csv</code>) in de map en probeer opnieuw. Klopt de map niet? Kies dan de map <code>${esc(MAP_NAAM)}</code>.</p>
+      <div class="start-actions"><button type="button" class="btn" id="opnieuw">Opnieuw proberen</button><button type="button" class="btn-ghost" data-kies>Andere map kiezen</button></div>`,
+    fout: `<h2>Dat lukte niet</h2><p>${esc(state.fout)}</p>
+      <div class="start-actions">${state.dir ? `<button type="button" class="btn" id="opnieuw">Opnieuw proberen</button>` : ""}<button type="button" class="btn-ghost" data-kies>Map kiezen</button></div>`
+  };
+  $("start-card").innerHTML = v[state.status] || v.start;
+}
+
+function renderStats() {
+  const ok = state.status === "ok";
+  $("st-m").textContent = ok ? fmtNum(state.machines.length) : "–";
+  $("st-k").textContent = ok ? fmtNum(state.byKlant.size) : "–";
+  $("st-a").textContent = ok ? fmtNum(state.machines.filter(heeftAandacht).length) : "–";
+}
+
+function zichtbareKlanten() {
+  const q = norm(state.q.trim());
+  return state.klanten.filter(k =>
+    (!q || k.zoek.includes(q)) &&
+    (!state.groep || k.groep === state.groep) &&
+    (!state.metMachines || state.byKlant.has(k.key)));
+}
+
+function renderList() {
+  const list = zichtbareKlanten();
+  $("count").textContent = list.length === state.klanten.length ? `${state.klanten.length} klanten` : `${list.length} van ${state.klanten.length} klanten`;
+  if (!list.length) { $("klanten").innerHTML = `<li class="empty-list">Geen klant gevonden. Probeer een andere zoekterm of filter.</li>`; return; }
+  $("klanten").innerHTML = list.map(k => {
+    const ms = state.byKlant.get(k.key) || [];
+    const alert = ms.some(heeftAandacht);
+    const sub = [k.gemeente, k.nr ? "nr. " + k.nr : ""].filter(Boolean).join(" · ");
+    return `<li><button type="button" class="klant${state.sel === k.key ? " on" : ""}" data-key="${esc(k.key)}">
+      <span class="k-naam">${esc(k.naam)}</span>
+      <span class="k-sub">${esc(sub)}</span>
+      ${ms.length ? `<span class="k-badge">${alert ? `<span class="dot d-slecht" title="Aandacht nodig"></span>` : ""}<span class="n num" title="Aantal machines">${ms.length}</span></span>` : ""}
+    </button></li>`;
+  }).join("");
+}
+
+function chip(v) {
+  return v ? `<span class="chip"><span class="dot d-${esc(v)}"></span>${esc(STAAT_LABEL[v] || v)}</span>` : `<span class="opt">–</span>`;
+}
+
+function renderDetail() {
+  const box = $("detail").firstElementChild;
+  const k = state.sel && state.byKey.get(state.sel);
+  $("app").classList.toggle("open", !!k);
+  box.innerHTML = k ? klantView(k) : overzichtView();
+  laadFotos(box);
+}
+
+function overzichtView() {
+  const legend = `<div class="legend">${STATEN.map(([v, l]) => `<span><span class="dot d-${v}"></span>${l}</span>`).join("")}</div>`;
+  let body;
+  if (!state.machines.length) {
+    body = `<div class="empty"><strong>Nog geen machines geregistreerd</strong>
+      <ol class="steps"><li>Zoek links de klant op.</li><li>Klik op <b>Machine toevoegen</b>.</li><li>Vul merk, type, bouwjaar, cycli en de staat in, en voeg foto's toe.</li></ol>
+      <p>Elke shaker registreer je apart. Staan er twee bij dezelfde klant? Dan voeg je er twee toe.</p></div>`;
+  } else {
+    const aandacht = state.machines.filter(heeftAandacht).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    const recent = [...state.machines].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, 8);
+    body = `
+      <section><div class="sec-head"><h3>Aandacht nodig</h3><span>${aandacht.length ? `${aandacht.length} machine${aandacht.length > 1 ? "s" : ""} in matige of slechte staat` : ""}</span></div>
+        ${aandacht.length ? rows(aandacht) : `<p class="hint">Alle geregistreerde machines en klemplaten zijn in goede of redelijke staat.</p>`}</section>
+      <section><div class="sec-head"><h3>Laatst bijgewerkt</h3></div>${rows(recent)}</section>`;
+  }
+  return `<div class="intro"><h2>Overzicht</h2><p>Kies links een klant om de shakers te bekijken of een nieuwe machine te registreren.</p>${legend}</div>${body}`;
+}
+
+function rows(list) {
+  return `<ul class="rows">${list.map(m => {
+    const k = state.byKey.get(m.klant);
+    return `<li><button type="button" class="row" data-key="${esc(m.klant)}">
+      <span><b>${esc(k ? k.naam : m.klantnaam || "Onbekende klant")}</b><span class="sub">${esc([m.merk, m.type].filter(Boolean).join(" "))}${m.bouwjaar ? " · " + esc(m.bouwjaar) : ""}</span></span>
+      <span class="st"><span>Staat ${chip(m.staat)}</span><span>Klemplaat ${chip(m.klemplaat)}</span></span>
+      <span class="when">${m.updatedAt ? fmtDatum(m.updatedAt) : ""}</span>
+    </button></li>`;
+  }).join("")}</ul>`;
+}
+
+function klantView(k) {
+  const ms = state.byKlant.get(k.key) || [];
+  const adres = [k.adres, [k.pc, k.gemeente].filter(Boolean).join(" "), k.land && k.land !== "BE" ? k.land : ""].filter(Boolean).join(", ");
+  const lijst = ms.length
+    ? `<div class="machines">${ms.map(machineCard).join("")}</div>`
+    : `<div class="empty"><strong>Nog geen machines bij deze klant</strong><p>Voeg de eerste shaker toe met de knop hierboven.</p></div>`;
+  return `<button type="button" class="back" id="back">← Alle klanten</button>
+    <section class="k-head">
+      <div><h2>${esc(k.naam)}</h2>${k.groep ? `<span class="tag">${esc(k.groep)}</span>` : ""}</div>
+      <button type="button" class="btn" data-add>+ Machine toevoegen</button>
+      <dl class="k-meta">
+        <div><dt>Klantnummer</dt><dd class="num">${esc(k.nr || "–")}</dd></div>
+        <div><dt>Adres</dt><dd>${esc(adres || "–")}</dd></div>
+        <div><dt>Telefoon</dt><dd class="num">${esc(k.tel || "–")}</dd></div>
+        <div><dt>E-mail</dt><dd>${esc(k.email || "–")}</dd></div>
+        ${k.regels.length > 1 || k.regels[0] !== k.naam ? `<div class="k-regels"><dt>In de klantenlijst als</dt><dd>${k.regels.map(esc).join("<br>")}</dd></div>` : ""}
+      </dl>
+    </section>
+    <section>
+      <div class="sec-head"><h3>Machines</h3><span class="num">${ms.length + (ms.length === 1 ? " machine" : " machines")}</span></div>
+      ${lijst}
+    </section>`;
+}
+
+function machineCard(m) {
+  const fotos = Array.isArray(m.fotos) ? m.fotos : [];
+  const titel = esc([m.merk, m.type].filter(Boolean).join(" "));
+  const foto = fotos.length
+    ? `<button type="button" class="m-foto" data-view="${esc(m.id)}" data-i="0" aria-label="Foto's bekijken van ${titel}">
+        <img alt="" data-file="${esc(fotos[0])}">${fotos.length > 1 ? `<span class="cnt">${fotos.length} foto's</span>` : ""}</button>`
+    : `<div class="m-foto none">Geen foto</div>`;
+  const door = m.updatedBy || m.createdBy;
+  return `<article class="m-card">
+    ${foto}
+    <div class="m-body">
+      <div><p class="m-merk">${esc(m.merk || "Merk onbekend")}</p><h4>${esc(m.type || "Type onbekend")}</h4></div>
+      <dl class="specs">
+        <div><dt>Bouwjaar</dt><dd>${m.bouwjaar ? esc(m.bouwjaar) : "–"}</dd></div>
+        <div><dt>Aantal cycli</dt><dd>${Number.isFinite(m.cycli) ? fmtNum(m.cycli) : "–"}</dd></div>
+        <div><dt>Algemene staat</dt><dd>${chip(m.staat)}</dd></div>
+        <div><dt>Staat klemplaat</dt><dd>${chip(m.klemplaat)}</dd></div>
+      </dl>
+      ${m.opmerking ? `<p class="m-note">${esc(m.opmerking)}</p>` : ""}
+    </div>
+    <div class="m-foot">
+      <span>${m.updatedAt ? "Bijgewerkt " + fmtDatum(m.updatedAt) : ""}${door ? " · " + esc(door) : ""}</span>
+      <button type="button" class="btn-link" data-edit="${esc(m.id)}">Bewerken</button>
+    </div>
+  </article>`;
+}
+
+/* ---------- Interactie ---------- */
+let qTimer;
+$("q").addEventListener("input", e => { clearTimeout(qTimer); qTimer = setTimeout(() => { state.q = e.target.value; renderList(); }, 120); });
+$("groep").addEventListener("change", e => { state.groep = e.target.value; renderList(); });
+$("metMachines").addEventListener("change", e => { state.metMachines = e.target.checked; renderList(); });
+
+function openKlant(key) {
+  state.sel = state.byKey.get(key)?.key || key;
+  renderList(); renderDetail();
+  if (window.matchMedia("(max-width: 860px)").matches) window.scrollTo(0, 0);
+}
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-key],[data-add],[data-edit],[data-view],[data-kies],#back,#go,#opnieuw");
+  if (!t) return;
+  if (t.hasAttribute("data-kies")) return kiesMap();
+  if (t.id === "go") return geefToestemming();
+  if (t.id === "opnieuw") return laadMap();
+  if (t.id === "back") { state.sel = null; renderList(); renderDetail(); window.scrollTo(0, 0); return; }
+  if (t.hasAttribute("data-add")) return openForm(state.sel, null);
+  if (t.dataset.edit) { const m = state.machines.find(x => x.id === t.dataset.edit); if (m) openForm(m.klant, m); return; }
+  if (t.dataset.view) { const m = state.machines.find(x => x.id === t.dataset.view); if (m) openViewer(m, +t.dataset.i || 0); return; }
+  if (t.dataset.key) openKlant(t.dataset.key);
+});
+
+/* ---------- Formulier ---------- */
+const form = $("form");
+let F = null; // huidige formuliertoestand
+
+function segHTML(name) {
+  return STATEN.map(([v, l]) => `<input type="radio" name="${name}" id="f-${name}-${v}" value="${v}"><label for="f-${name}-${v}"><span class="dot d-${v}"></span>${l}</label>`).join("");
+}
+$("seg-staat").innerHTML = segHTML("staat");
+$("seg-klemplaat").innerHTML = segHTML("klemplaat");
+$("f-jaar").max = JAAR_NU;
+
+function openForm(klantKey, m) {
+  const k = state.byKey.get(klantKey);
+  if (k) klantKey = k.key;
+  // Bestaande foto's: {file}; nieuwe foto's: {blob, url} tot er bewaard wordt.
+  F = { klantKey, id: m ? m.id : null, orig: m, fotos: (m && Array.isArray(m.fotos) ? m.fotos : []).map(file => ({ file })), weg: [], bezig: 0 };
+  $("f-klant").textContent = k ? k.naam : (m && m.klantnaam) || "";
+  $("f-title").textContent = m ? "Machine bewerken" : "Machine toevoegen";
+  $("f-merk").value = m?.merk || "";
+  $("f-type").value = m?.type || "";
+  $("f-jaar").value = m?.bouwjaar ?? "";
+  $("f-cycli").value = m?.cycli ?? "";
+  $("f-note").value = m?.opmerking || "";
+  $("f-door").value = lsGet("shaker-naam");
+  for (const name of ["staat", "klemplaat"]) form.querySelectorAll(`input[name="${name}"]`).forEach(r => { r.checked = !!m && r.value === m[name]; });
+  form.querySelectorAll(".err, #e-form").forEach(el => el.textContent = "");
+  form.querySelectorAll("[aria-invalid]").forEach(el => el.removeAttribute("aria-invalid"));
+  renderDelZone(false);
+  renderFotos();
+  $("sheet").hidden = false;
+  document.body.style.overflow = "hidden";
+  $("f-merk").focus();
+}
+
+function closeForm() {
+  if (!F) return;
+  F.fotos.forEach(f => { if (f.url) URL.revokeObjectURL(f.url); });
+  F = null;
+  $("sheet").hidden = true;
+  document.body.style.overflow = "";
+}
+
+function renderDelZone(confirm) {
+  const z = $("del-zone");
+  if (!F || !F.id) { z.innerHTML = ""; return; }
+  z.innerHTML = confirm
+    ? `<span class="confirm">Machine en foto's verwijderen? <button type="button" class="btn-danger" id="del-yes">Ja, verwijderen</button><button type="button" class="btn-ghost" id="del-no">Nee</button></span>`
+    : `<button type="button" class="btn-link danger" id="del-ask">Verwijderen</button>`;
+}
+
+function renderFotos() {
+  $("ph-grid").innerHTML = F.fotos.map((f, i) => `<div class="ph${f.bezig ? " busy" : ""}">
+      ${f.url ? `<img src="${esc(f.url)}" alt="Foto ${i + 1}">` : f.file ? `<img alt="Foto ${i + 1}" data-file="${esc(f.file)}">` : ""}
+      ${f.bezig ? "" : `<button type="button" class="rm" data-rm="${i}" aria-label="Foto ${i + 1} verwijderen">×</button>`}
+    </div>`).join("") + `<label class="ph-add" for="f-fotos">+ Foto's toevoegen</label>`;
+  laadFotos($("ph-grid"));
+  $("f-save").disabled = F.bezig > 0;
+}
+
+$("sheet").addEventListener("click", e => {
+  if (e.target.closest("[data-close]")) return closeForm();
+  const rm = e.target.closest("[data-rm]");
+  if (rm && F) {
+    const [f] = F.fotos.splice(+rm.dataset.rm, 1);
+    if (f && f.file) F.weg.push(f.file);
+    if (f && f.url) URL.revokeObjectURL(f.url);
+    renderFotos();
+    return;
+  }
+  if (e.target.id === "del-ask") return renderDelZone(true);
+  if (e.target.id === "del-no") return renderDelZone(false);
+  if (e.target.id === "del-yes") return verwijderMachine();
+});
+
+// Foto's worden verkleind tot max. 1600 px (JPEG), zodat de gedeelde map niet volloopt.
+async function verklein(file) {
+  try {
+    const bmp = await createImageBitmap(file, { imageOrientation: "from-image" });
+    const s = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement("canvas");
+    c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
+    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+    if (bmp.close) bmp.close();
+    const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.82));
+    if (blob) return blob;
+  } catch (e) { /* valt terug op het originele bestand */ }
+  if (["image/jpeg", "image/png", "image/webp"].includes(file.type)) return file;
+  throw new Error("formaat");
+}
+const extensie = blob => ({ "image/png": "png", "image/webp": "webp" }[blob.type] || "jpg");
+
+$("f-fotos").addEventListener("change", async e => {
+  const files = [...e.target.files];
+  e.target.value = "";
+  if (!F || !files.length) return;
+  const huidig = F;
+  $("e-foto").textContent = "";
+  await Promise.all(files.map(async file => {
+    const item = { bezig: true };
+    huidig.fotos.push(item); huidig.bezig++; renderFotos();
+    try {
+      item.blob = await verklein(file);
+      item.url = URL.createObjectURL(item.blob);
+      item.bezig = false;
+    } catch (err) {
+      huidig.fotos.splice(huidig.fotos.indexOf(item), 1);
+      if (F === huidig) $("e-foto").textContent = "Dit fotoformaat wordt niet ondersteund. Gebruik JPG of PNG.";
+    } finally {
+      huidig.bezig--;
+      if (F === huidig) renderFotos();
+    }
+  }));
+});
+
+function veldFout(id, msg) {
+  $("e-" + id).textContent = msg;
+  const input = $("f-" + id);
+  if (input) { if (msg) input.setAttribute("aria-invalid", "true"); else input.removeAttribute("aria-invalid"); }
+  return !!msg;
+}
+
+form.addEventListener("submit", async e => {
+  e.preventDefault();
+  if (!F || F.bezig > 0) return;
+  const merk = $("f-merk").value.trim(), type = $("f-type").value.trim(), door = $("f-door").value.trim();
+  const jaarTxt = $("f-jaar").value.trim(), cycliTxt = $("f-cycli").value.trim();
+  const jaar = jaarTxt ? Number(jaarTxt) : null, cycli = cycliTxt ? Number(cycliTxt) : null;
+  const staat = form.querySelector('input[name="staat"]:checked')?.value || "";
+  const klemplaat = form.querySelector('input[name="klemplaat"]:checked')?.value || "";
+  let fout = false;
+  fout = veldFout("merk", merk ? "" : "Vul het merk in.") || fout;
+  fout = veldFout("type", type ? "" : "Vul het type shaker in.") || fout;
+  fout = veldFout("jaar", jaar === null || (Number.isInteger(jaar) && jaar >= 1970 && jaar <= JAAR_NU) ? "" : `Geef een jaartal tussen 1970 en ${JAAR_NU}.`) || fout;
+  fout = veldFout("cycli", cycli === null || (Number.isInteger(cycli) && cycli >= 0) ? "" : "Geef een geheel getal, 0 of meer.") || fout;
+  fout = veldFout("staat", staat ? "" : "Kies de algemene staat.") || fout;
+  fout = veldFout("klemplaat", klemplaat ? "" : "Kies de staat van de klemplaat.") || fout;
+  fout = veldFout("door", door ? "" : "Vul je naam in.") || fout;
+  if (fout) { form.querySelector('[aria-invalid="true"], .err:not(:empty)')?.scrollIntoView({ block: "center" }); return; }
+  lsSet("shaker-naam", door);
+
+  const k = state.byKey.get(F.klantKey);
+  const id = F.id || nieuwId();
+  const nu = Date.now();
+  $("f-save").disabled = true; $("f-save").textContent = "Bewaren…"; $("e-form").textContent = "";
+  try {
+    // Eerst de nieuwe foto's wegschrijven, dan het machinebestand dat ernaar verwijst.
+    const fotos = [];
+    for (const f of F.fotos) {
+      if (f.file) { fotos.push(f.file); continue; }
+      const naam = `${id}-${nieuwId()}.${extensie(f.blob)}`;
+      await schrijfBestand(state.fotosDir, naam, f.blob);
+      fotos.push(naam);
+    }
+    const data = {
+      klant: F.klantKey, klantnummer: k ? k.nr : (F.orig?.klantnummer || ""), klantnaam: k ? k.naam : (F.orig?.klantnaam || ""),
+      merk, type, bouwjaar: jaar, cycli, staat, klemplaat, opmerking: $("f-note").value.trim(), fotos,
+      createdAt: F.orig?.createdAt || nu, createdBy: F.orig?.createdBy || door, updatedAt: nu, updatedBy: door
+    };
+    await schrijfBestand(state.machinesDir, id + ".json", JSON.stringify(data, null, 2));
+    for (const naam of F.weg) await verwijderBestand(state.fotosDir, naam);
+    const nieuw = !F.id;
+    closeForm();
+    await leesMachines();
+    render();
+    toast(nieuw ? "Machine bewaard" : "Wijzigingen bewaard");
+  } catch (err) {
+    $("e-form").textContent = err && err.name === "NotAllowedError"
+      ? "Bewaren lukte niet: de pagina mag niet in de map schrijven. Klik op Vernieuwen en sta wijzigingen toe."
+      : "Bewaren lukte niet. Controleer of de map nog gesynchroniseerd is en probeer opnieuw.";
+    $("f-save").disabled = false; $("f-save").textContent = "Bewaren";
+  }
+});
+
+async function verwijderMachine() {
+  if (!F || !F.id) return;
+  const id = F.id, fotos = F.fotos.filter(f => f.file).map(f => f.file).concat(F.weg);
+  try {
+    await state.machinesDir.removeEntry(id + ".json");
+    for (const naam of fotos) await verwijderBestand(state.fotosDir, naam);
+    closeForm();
+    await leesMachines();
+    render();
+    toast("Machine verwijderd");
+  } catch (err) {
+    $("e-form").textContent = "Verwijderen lukte niet. Probeer opnieuw.";
+    renderDelZone(false);
+  }
+}
+
+/* ---------- Fotoviewer ---------- */
+let LB = null;
+function openViewer(m, i) {
+  const fotos = Array.isArray(m.fotos) ? m.fotos : [];
+  if (!fotos.length) return;
+  const k = state.byKey.get(m.klant);
+  LB = { fotos, i, titel: [k ? k.naam : m.klantnaam, [m.merk, m.type].filter(Boolean).join(" ")].filter(Boolean).join(" · ") };
+  $("lightbox").hidden = false;
+  document.body.style.overflow = "hidden";
+  showFoto();
+  $("lb-close").focus();
+}
+function showFoto() {
+  const img = $("lb-img"), nr = LB.i;
+  img.removeAttribute("src");
+  fotoUrl(LB.fotos[nr]).then(u => { if (LB && LB.i === nr) img.src = u; }).catch(() => {});
+  img.alt = `Foto ${nr + 1} van ${LB.titel}`;
+  $("lb-cap").textContent = `${LB.titel} · foto ${nr + 1} van ${LB.fotos.length}`;
+  $("lb-prev").disabled = nr === 0;
+  $("lb-next").disabled = nr === LB.fotos.length - 1;
+}
+function closeViewer() { LB = null; $("lightbox").hidden = true; $("lb-img").removeAttribute("src"); document.body.style.overflow = ""; }
+$("lb-close").addEventListener("click", closeViewer);
+$("lb-prev").addEventListener("click", () => { if (LB && LB.i > 0) { LB.i--; showFoto(); } });
+$("lb-next").addEventListener("click", () => { if (LB && LB.i < LB.fotos.length - 1) { LB.i++; showFoto(); } });
+$("lightbox").addEventListener("click", e => { if (e.target.id === "lightbox" || e.target.classList.contains("lb-img")) closeViewer(); });
+
+document.addEventListener("keydown", e => {
+  if (LB) {
+    if (e.key === "Escape") closeViewer();
+    else if (e.key === "ArrowLeft") $("lb-prev").click();
+    else if (e.key === "ArrowRight") $("lb-next").click();
+  } else if (F && e.key === "Escape") closeForm();
+});
+
+let toastTimer;
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg; t.classList.add("on");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("on"), 2600);
+}
+
+render();
+init();
+</script>
+</body>
+</html>
