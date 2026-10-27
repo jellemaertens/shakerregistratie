@@ -352,11 +352,6 @@ button.ph-add{background:none; font:inherit; font-weight:600; font-size:.875rem}
         <p class="err" id="e-foto"></p>
       </div>
 
-      <div class="f">
-        <label for="f-door">Geregistreerd door</label>
-        <input id="f-door" autocomplete="name" placeholder="Je voor- en achternaam">
-        <p class="err" id="e-door"></p>
-      </div>
     </div>
     <div class="panel-foot">
       <div id="del-zone"></div>
@@ -839,7 +834,6 @@ function openForm(klantKey, m) {
   $("f-jaar").value = m?.bouwjaar ?? "";
   $("f-cycli").value = m?.cycli ?? "";
   $("f-note").value = m?.opmerking || "";
-  $("f-door").value = lsGet("shaker-naam");
   for (const name of ["staat", "klemplaat"]) form.querySelectorAll(`input[name="${name}"]`).forEach(r => { r.checked = !!m && r.value === m[name]; });
   form.querySelectorAll(".err, #e-form").forEach(el => el.textContent = "");
   form.querySelectorAll("[aria-invalid]").forEach(el => el.removeAttribute("aria-invalid"));
@@ -1045,7 +1039,7 @@ function veldFout(id, msg) {
 form.addEventListener("submit", async e => {
   e.preventDefault();
   if (!F || F.bezig > 0) return;
-  const merk = $("f-merk").value.trim(), type = $("f-type").value.trim(), door = $("f-door").value.trim();
+  const merk = $("f-merk").value.trim(), type = $("f-type").value.trim();
   const jaarTxt = $("f-jaar").value.trim(), cycliTxt = $("f-cycli").value.trim();
   const jaar = jaarTxt ? Number(jaarTxt) : null, cycli = cycliTxt ? Number(cycliTxt) : null;
   const staat = form.querySelector('input[name="staat"]:checked')?.value || "";
@@ -1057,9 +1051,7 @@ form.addEventListener("submit", async e => {
   fout = veldFout("cycli", cycli === null || (Number.isInteger(cycli) && cycli >= 0) ? "" : "Geef een geheel getal, 0 of meer.") || fout;
   fout = veldFout("staat", staat ? "" : "Kies de algemene staat.") || fout;
   fout = veldFout("klemplaat", klemplaat ? "" : "Kies de staat van de klemplaat.") || fout;
-  fout = veldFout("door", door ? "" : "Vul je naam in.") || fout;
   if (fout) { form.querySelector('[aria-invalid="true"], .err:not(:empty)')?.scrollIntoView({ block: "center" }); return; }
-  lsSet("shaker-naam", door);
 
   const k = state.byKey.get(F.klantKey);
   const id = F.id || nieuwId();
@@ -1077,7 +1069,7 @@ form.addEventListener("submit", async e => {
     const data = {
       klant: F.klantKey, klantnummer: k ? k.nr : (F.orig?.klantnummer || ""), klantnaam: k ? k.naam : (F.orig?.klantnaam || ""),
       merk, type, bouwjaar: jaar, cycli, staat, klemplaat, opmerking: $("f-note").value.trim(), fotos,
-      createdAt: F.orig?.createdAt || nu, createdBy: F.orig?.createdBy || door, updatedAt: nu, updatedBy: door
+      createdAt: F.orig?.createdAt || nu, updatedAt: nu
     };
     await schrijfBestand(state.machinesDir, id + ".json", JSON.stringify(data, null, 2));
     for (const naam of F.weg) await verwijderBestand(state.fotosDir, naam);
