@@ -286,6 +286,7 @@ button.ph-add{background:none; font:inherit; font-weight:600; font-size:.875rem}
     <div class="map-info">
       <span>Map: <b id="map-naam"></b></span>
       <span id="bron"></span>
+      <span id="sync"></span>
       <span class="row-btns"><button type="button" class="btn-link" id="ververs">Vernieuwen</button><button type="button" class="btn-link" data-import>Klantenlijst importeren</button><button type="button" class="btn-link" data-kies>Andere map kiezen</button></span>
     </div>
   </aside>
@@ -452,6 +453,7 @@ async function laadMap() {
     machineCache.clear(); fotoUrls.clear();
     await leesMachines();
     state.status = "ok";
+    state.gesynct = Date.now();
   } catch (e) {
     if (e && e.code === "geen-klanten") state.status = "geen-klanten";
     else { state.status = "fout"; state.fout = "De map kon niet gelezen worden. Controleer of OneDrive de map gesynchroniseerd heeft en probeer opnieuw."; }
@@ -481,21 +483,23 @@ function parseCsv(text) {
 }
 
 // Klantenlijst: de recentste klanten*.csv-export in de map, anders klanten.json.
-async function leesKlanten(dir) {
+async function zoekKlantenBestand(dir) {
   let csv = null, json = null;
   for await (const [name, h] of dir.entries()) {
     if (h.kind !== "file") continue;
     if (/^klanten.*\.csv$/i.test(name)) { const f = await h.getFile(); if (!csv || f.lastModified > csv.lastModified) csv = f; }
     else if (name.toLowerCase() === "klanten.json") json = await h.getFile();
   }
-  if (csv) {
-    const rijen = klantenUitCsv(await leesTekst(csv));
-    if (!rijen) throw { code: "geen-klanten" };
-    state.bron = csv.name;
-    return rijen;
-  }
-  if (json) { state.bron = json.name; return JSON.parse(await leesTekst(json)); }
-  throw { code: "geen-klanten" };
+  return csv || json;
+}
+const bestandSig = f => f ? `${f.name}:${f.lastModified}:${f.size}` : "";
+async function leesKlanten(dir) {
+  const f = await zoekKlantenBestand(dir);
+  if (!f) throw { code: "geen-klanten" };
+  const rijen = f.name.toLowerCase().endsWith(".json") ? JSON.parse(await leesTekst(f)) : klantenUitCsv(await leesTekst(f));
+  if (!rijen) throw { code: "geen-klanten" };
+  state.bron = f.name; state.bronSig = bestandSig(f);
+  return rijen;
 }
 
 // Zet een klantenexport (puntkomma-gescheiden, met kolom "naam") om naar rijen; null als het geen klantenlijst is.
@@ -555,25 +559,31 @@ function zetKlanten(rows) {
 }
 
 // Eén JSON-bestand per machine in /machines; onveranderde bestanden worden niet opnieuw gelezen.
+// Bewerken twee toestellen tegelijk dezelfde machine, dan maakt OneDrive een conflictkopie (bv. "abc-LAPTOP.json").
+// Die herkennen we aan het id in het bestand: per id tonen we de recentste versie, en bij het volgende bewaren ruimen we de kopieën op.
 const machineCache = new Map();
 async function leesMachines() {
-  const seen = new Set(), out = [];
+  const seen = new Set(), perId = new Map();
   for await (const [name, h] of state.machinesDir.entries()) {
     if (h.kind !== "file" || !name.endsWith(".json")) continue;
     seen.add(name);
     const c = machineCache.get(name);
+    let data;
     try {
       const f = await h.getFile();
-      if (c && c.lm === f.lastModified && c.size === f.size) { out.push(c.data); continue; }
-      const data = { ...JSON.parse(await f.text()), id: name.slice(0, -5) };
-      machineCache.set(name, { lm: f.lastModified, size: f.size, data });
-      out.push(data);
-    } catch (e) { if (c) out.push(c.data); /* half gesynchroniseerd: volgende keer opnieuw */ }
+      if (c && c.lm === f.lastModified && c.size === f.size) data = c.data;
+      else { data = JSON.parse(await f.text()); machineCache.set(name, { lm: f.lastModified, size: f.size, data }); }
+    } catch (e) { if (!c) continue; data = c.data; /* half gesynchroniseerd: volgende keer opnieuw */ }
+    const id = data.id || name.slice(0, -5);
+    const m = { ...data, id }, best = perId.get(id);
+    if (!best) perId.set(id, { m, bestanden: [name] });
+    else { best.bestanden.push(name); if ((m.updatedAt || 0) > (best.m.updatedAt || 0)) best.m = m; }
   }
   for (const k of [...machineCache.keys()]) if (!seen.has(k)) machineCache.delete(k);
+  const out = [...perId.values()].map(({ m, bestanden }) => ({ ...m, bestanden }));
   state.machines = out;
   indexMachines();
-  const sig = out.map(m => m.id + ":" + (m.updatedAt || 0)).sort().join(",");
+  const sig = out.map(m => m.id + ":" + (m.updatedAt || 0) + ":" + m.bestanden.length).sort().join(",");
   const veranderd = sig !== state.sig;
   state.sig = sig;
   return veranderd;
@@ -649,16 +659,33 @@ function laadFotos(root) {
   });
 }
 
-// Wijzigingen van collega's komen binnen via OneDrive; we kijken geregeld of er iets veranderde.
+// Alle toestellen werken op dezelfde SharePoint-map. OneDrive brengt de bestanden van andere toestellen binnen;
+// de pagina kijkt elke 15 seconden (en bij terugkeren naar de pagina) of de klantenlijst, machines of foto's veranderden.
+let aanHetVerversen = false;
 async function ververs(handmatig) {
-  if (state.status !== "ok" || $("sheet").hidden === false) return;
+  if (state.status !== "ok" || !$("sheet").hidden || aanHetVerversen) return;
+  aanHetVerversen = true;
   try {
-    if (await leesMachines()) render();
+    let veranderd = false;
+    const sig = bestandSig(await zoekKlantenBestand(state.dir));
+    if (sig && sig !== state.bronSig) { zetKlanten(await leesKlanten(state.dir)); veranderd = true; }
+    if (await leesMachines()) veranderd = true;
+    if (veranderd) render();
+    else if (document.querySelector("#detail .broken")) renderDetail(); // foto's die nog niet gesynchroniseerd waren opnieuw proberen
+    state.gesynct = Date.now(); toonSync();
     if (handmatig) toast("Bijgewerkt");
-  } catch (e) { if (handmatig) toast("Vernieuwen lukte niet"); }
+  } catch (e) {
+    toonSync(true);
+    if (handmatig) toast("Vernieuwen lukte niet. Controleer of OneDrive gesynchroniseerd is.");
+  } finally { aanHetVerversen = false; }
 }
-setInterval(() => { if (document.visibilityState === "visible") ververs(false); }, 20000);
+function toonSync(fout) {
+  const tijd = state.gesynct ? new Intl.DateTimeFormat("nl-BE", { hour: "2-digit", minute: "2-digit" }).format(state.gesynct) : "";
+  $("sync").textContent = fout ? "De map kon niet gelezen worden. Is OneDrive actief?" : tijd ? `Laatst gesynchroniseerd om ${tijd}` : "";
+}
+setInterval(() => { if (document.visibilityState === "visible") ververs(false); }, 15000);
 window.addEventListener("focus", () => ververs(false));
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") ververs(false); });
 $("ververs").addEventListener("click", () => ververs(true));
 $("imp").addEventListener("change", e => { const f = e.target.files[0]; e.target.value = ""; if (f && state.dir) importeerKlanten(f); });
 
@@ -671,6 +698,7 @@ function render() {
   if (!ok) return renderStart();
   $("map-naam").textContent = state.dir ? state.dir.name : "";
   $("bron").textContent = state.bron ? "Klantenlijst: " + state.bron : "";
+  toonSync();
   renderList(); renderDetail();
 }
 
@@ -885,6 +913,7 @@ function closeForm() {
   F = null;
   $("sheet").hidden = true;
   document.body.style.overflow = "";
+  if (state.status === "ok") render(); // wat intussen van andere toestellen binnenkwam, meteen tonen
 }
 
 function renderDelZone(confirm) {
@@ -915,6 +944,7 @@ $("sheet").addEventListener("click", e => {
     return;
   }
   if (e.target.closest("[data-cam]")) return openCamera();
+  if (e.target.id === "forceer" && F) { F.forceer = true; return form.requestSubmit(); }
   if (e.target.id === "del-ask") return renderDelZone(true);
   if (e.target.id === "del-no") return renderDelZone(false);
   if (e.target.id === "del-yes") return verwijderMachine();
@@ -1088,6 +1118,20 @@ form.addEventListener("submit", async e => {
   fout = veldFout("klemplaat", klemplaat ? "" : "Kies de staat van de klemplaat.") || fout;
   if (fout) { form.querySelector('[aria-invalid="true"], .err:not(:empty)')?.scrollIntoView({ block: "center" }); return; }
 
+  // Werd deze machine intussen op een ander toestel aangepast of verwijderd? Dan eerst vragen of je toch wil overschrijven.
+  if (F.id && !F.forceer) {
+    try {
+      await leesMachines();
+      const huidig = state.machines.find(x => x.id === F.id);
+      const melding = !huidig ? "Deze machine werd intussen op een ander toestel verwijderd."
+        : (huidig.updatedAt || 0) > (F.orig.updatedAt || 0) ? "Deze machine werd intussen op een ander toestel aangepast." : "";
+      if (melding) {
+        $("e-form").innerHTML = `${esc(melding)} Sluit dit venster om de nieuwste gegevens te zien, of <button type="button" class="btn-link" id="forceer">bewaar toch jouw versie</button>.`;
+        return;
+      }
+    } catch (e) { /* map tijdelijk niet leesbaar: gewoon bewaren */ }
+  }
+
   const k = state.byKey.get(F.klantKey);
   const id = F.id || nieuwId();
   const nu = Date.now();
@@ -1115,11 +1159,13 @@ form.addEventListener("submit", async e => {
       fotos.push(`${winkelMap}/${naam}`);
     }
     const data = {
-      klant: F.klantKey, klantnummer: k ? k.nr : (F.orig?.klantnummer || ""), klantnaam: k ? k.naam : (F.orig?.klantnaam || ""),
+      id, klant: F.klantKey, klantnummer: k ? k.nr : (F.orig?.klantnummer || ""), klantnaam: k ? k.naam : (F.orig?.klantnaam || ""),
       merk, type, bouwjaar: jaar, cycli, staat, klemplaat, opmerking: $("f-note").value.trim(), fotos,
       createdAt: F.orig?.createdAt || nu, updatedAt: nu
     };
     await schrijfBestand(state.machinesDir, id + ".json", JSON.stringify(data, null, 2));
+    // Conflictkopieën van OneDrive van deze machine zijn nu overbodig.
+    for (const n of bestandenVan(id)) if (n !== id + ".json") { try { await state.machinesDir.removeEntry(n); } catch (e) { /* al weg */ } }
     for (const pad of F.weg) await verwijderFoto(pad);
     for (const [dir, n] of verplaatst) { try { await dir.removeEntry(n); } catch (e) { /* al weg */ } }
     if (verplaatst.length) await ruimOudeFotomapOp();
@@ -1136,11 +1182,19 @@ form.addEventListener("submit", async e => {
   }
 });
 
+// Alle bestanden van een machine: het eigen bestand plus eventuele conflictkopieën van OneDrive.
+function bestandenVan(id) {
+  const m = state.machines.find(x => x.id === id);
+  return m && m.bestanden ? m.bestanden : (F && F.orig && F.orig.id === id && F.orig.bestanden) || [id + ".json"];
+}
+
 async function verwijderMachine() {
   if (!F || !F.id) return;
   const id = F.id, fotos = F.fotos.filter(f => f.file).map(f => f.file).concat(F.weg);
   try {
-    await state.machinesDir.removeEntry(id + ".json");
+    for (const n of bestandenVan(id)) {
+      try { await state.machinesDir.removeEntry(n); } catch (e) { if (!e || e.name !== "NotFoundError") throw e; }
+    }
     for (const pad of fotos) await verwijderFoto(pad);
     closeForm();
     await leesMachines();
