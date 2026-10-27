@@ -16,4 +16,4 @@ Deze repository bevat alleen de code. Alle gegevens (klantenlijst, machines en f
 |---|---|
 | `klanten-*.csv` | Export van de klantenlijst (de recentste wordt gebruikt). Zet een nieuwe export in de map om de lijst bij te werken. |
 | `machines/*.json` | Eén bestand per geregistreerde machine. |
-| `fotos/*.jpg` | Foto's, verkleind tot maximaal 1600 px. |
+| `<winkelnaam>/*.jpg` | Foto's per winkel, verkleind tot maximaal 1600 px. De map wordt aangemaakt bij de eerste foto. |

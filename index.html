@@ -447,7 +447,7 @@ async function laadMap() {
   try {
     const rijen = await leesKlanten(state.dir);
     state.machinesDir = await state.dir.getDirectoryHandle("machines", { create: true });
-    state.fotosDir = await state.dir.getDirectoryHandle("fotos", { create: true });
+    await ruimOudeFotomapOp();
     zetKlanten(rijen);
     machineCache.clear(); fotoUrls.clear();
     await leesMachines();
@@ -597,22 +597,47 @@ async function schrijfBestand(dir, name, inhoud) {
   await w.close();
 }
 
-// Foto's staan per winkel in fotos/<winkelnaam>/; een foto wordt bewaard als pad "Colora Aalst/<bestand>.jpg".
-// Oudere foto's zonder map staan rechtstreeks in fotos/.
-const veiligeMapNaam = s => (String(s || "").replace(/[\\/:*?"<>|#%~]/g, "-").replace(/\s+/g, " ").trim().replace(/[. ]+$/, "").slice(0, 100)) || "Onbekende klant";
-async function fotoLocatie(pad, maken) {
+// Foto's staan per winkel in een eigen map in de hoofdmap; een foto wordt bewaard als pad "Colora Aalst/<bestand>.jpg".
+// Oudere foto's staan nog in de map fotos/ (los of per winkel) en verhuizen naar de hoofdmap zodra de machine bewaard wordt.
+const GERESERVEERD = new Set(["machines", "fotos"]);
+function veiligeMapNaam(s) {
+  let naam = String(s || "").replace(/[\\/:*?"<>|#%~]/g, "-").replace(/\s+/g, " ").trim().replace(/[. ]+$/, "").slice(0, 100) || "Onbekende klant";
+  if (GERESERVEERD.has(naam.toLowerCase())) naam += " (winkel)";
+  return naam;
+}
+async function inMap(dir, pad, maken) {
   const delen = pad.split("/"), naam = delen.pop();
-  let dir = state.fotosDir;
   for (const d of delen) dir = await dir.getDirectoryHandle(d, { create: !!maken }); // maakt de winkelmap aan als ze nog niet bestaat
   return [dir, naam];
 }
-async function verwijderFoto(pad) { try { const [dir, naam] = await fotoLocatie(pad); await dir.removeEntry(naam); } catch (e) { /* al weg */ } }
+// Waar staat deze foto? Eerst in de winkelmap in de hoofdmap, anders op de oude plek in fotos/. Geeft [map, bestandsnaam, inHoofdmap].
+async function zoekFoto(pad) {
+  if (pad.includes("/")) {
+    try { const [dir, n] = await inMap(state.dir, pad); await dir.getFileHandle(n); return [dir, n, true]; } catch (e) { /* oude plek proberen */ }
+  }
+  if (!state.fotosDir) throw new Error("niet gevonden");
+  const [dir, n] = await inMap(state.fotosDir, pad);
+  await dir.getFileHandle(n);
+  return [dir, n, false];
+}
+// De oude map fotos/ wordt enkel nog gelezen. Lege (sub)mappen ruimen we op; removeEntry zonder "recursive" verwijdert nooit iets dat nog foto's bevat.
+async function ruimOudeFotomapOp() {
+  state.fotosDir = null;
+  let oud;
+  try { oud = await state.dir.getDirectoryHandle("fotos"); } catch (e) { return; }
+  const submappen = [];
+  for await (const [n, h] of oud.entries()) if (h.kind === "directory") submappen.push(n);
+  for (const n of submappen) { try { await oud.removeEntry(n); } catch (e) { /* bevat nog foto's */ } }
+  try { await state.dir.removeEntry("fotos"); } catch (e) { state.fotosDir = oud; }
+}
+
+async function verwijderFoto(pad) { try { const [dir, naam] = await zoekFoto(pad); await dir.removeEntry(naam); } catch (e) { /* al weg */ } }
 
 // Foto's worden pas geladen wanneer ze getoond worden; de URL blijft bewaard zolang de pagina open is.
 const fotoUrls = new Map();
 function fotoUrl(name) {
   if (!fotoUrls.has(name)) {
-    const p = fotoLocatie(name).then(([dir, n]) => dir.getFileHandle(n)).then(h => h.getFile()).then(f => URL.createObjectURL(f));
+    const p = zoekFoto(name).then(([dir, n]) => dir.getFileHandle(n)).then(h => h.getFile()).then(f => URL.createObjectURL(f));
     p.catch(() => fotoUrls.delete(name));
     fotoUrls.set(name, p);
   }
@@ -1068,24 +1093,24 @@ form.addEventListener("submit", async e => {
   const nu = Date.now();
   $("f-save").disabled = true; $("f-save").textContent = "Bewaren…"; $("e-form").textContent = "";
   try {
-    // Eerst de foto's in de map van de winkel zetten, dan het machinebestand dat ernaar verwijst.
+    // Eerst de foto's in de winkelmap in de hoofdmap zetten, dan het machinebestand dat ernaar verwijst.
     const winkelMap = veiligeMapNaam(k ? k.naam : F.orig?.klantnaam);
     const fotos = [], verplaatst = [];
     for (const f of F.fotos) {
-      if (f.file && f.file.includes("/")) { fotos.push(f.file); continue; }
       if (f.file) {
-        // Oudere foto zonder winkelmap: kopiëren naar de winkelmap, het origineel wordt na het bewaren verwijderd.
+        // Foto op de oude plek (fotos/): kopiëren naar de winkelmap; het origineel wordt na het bewaren verwijderd.
         try {
-          const [oudDir] = await fotoLocatie(f.file);
-          const bestand = await (await oudDir.getFileHandle(f.file)).getFile();
-          const [dir] = await fotoLocatie(`${winkelMap}/${f.file}`, true);
-          await schrijfBestand(dir, f.file, bestand);
-          fotos.push(`${winkelMap}/${f.file}`); verplaatst.push(f.file);
+          const [dir, n, inHoofdmap] = await zoekFoto(f.file);
+          if (inHoofdmap) { fotos.push(f.file); continue; }
+          const bestand = await (await dir.getFileHandle(n)).getFile();
+          const [doel] = await inMap(state.dir, `${winkelMap}/${n}`, true);
+          await schrijfBestand(doel, n, bestand);
+          fotos.push(`${winkelMap}/${n}`); verplaatst.push([dir, n]);
         } catch (e) { fotos.push(f.file); }
         continue;
       }
       const naam = `${id}-${nieuwId()}.${extensie(f.blob)}`;
-      const [dir] = await fotoLocatie(`${winkelMap}/${naam}`, true);
+      const [dir] = await inMap(state.dir, `${winkelMap}/${naam}`, true);
       await schrijfBestand(dir, naam, f.blob);
       fotos.push(`${winkelMap}/${naam}`);
     }
@@ -1095,7 +1120,9 @@ form.addEventListener("submit", async e => {
       createdAt: F.orig?.createdAt || nu, updatedAt: nu
     };
     await schrijfBestand(state.machinesDir, id + ".json", JSON.stringify(data, null, 2));
-    for (const pad of F.weg.concat(verplaatst)) await verwijderFoto(pad);
+    for (const pad of F.weg) await verwijderFoto(pad);
+    for (const [dir, n] of verplaatst) { try { await dir.removeEntry(n); } catch (e) { /* al weg */ } }
+    if (verplaatst.length) await ruimOudeFotomapOp();
     const nieuw = !F.id;
     closeForm();
     await leesMachines();
