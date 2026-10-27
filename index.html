@@ -191,6 +191,21 @@ button,input,select,textarea{font:inherit; color:inherit; font-feature-settings:
 .ph .rm{position:absolute; top:4px; right:4px; width:28px; height:28px; border:0; border-radius:var(--r); background:rgba(13,57,50,.85); color:#fff; font-size:1rem; line-height:1; cursor:pointer; z-index:1}
 .ph-add{display:grid; place-items:center; aspect-ratio:1; max-width:100%; border:1px dashed var(--line-strong); border-radius:var(--r); color:var(--accent); font-weight:600; font-size:.875rem; text-align:center; cursor:pointer; padding:8px}
 .ph-add:hover{background:var(--hover)}
+button.ph-add{background:none; font:inherit; font-weight:600; font-size:.875rem}
+
+/* Camera */
+.cam{position:fixed; inset:0; z-index:55; background:#04100E; color:#fff; display:grid; grid-template-rows:auto minmax(0,1fr) auto}
+.cam-top{display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 16px; font-size:.9375rem}
+.cam-view{position:relative; display:grid; place-items:center; min-height:0; padding:0 16px}
+.cam-view video{max-width:100%; max-height:100%; border-radius:var(--r); background:#000}
+.cam-view .flash{position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; transition:opacity .25s}
+.cam-view .flash.on{opacity:.7; transition:none}
+.cam-msg{max-width:46ch; text-align:center; color:#E2E7DC; line-height:1.5}
+.cam-bar{display:flex; flex-wrap:wrap; justify-content:center; align-items:center; gap:12px; padding:14px 16px 20px}
+.cam-shoot{width:68px; height:68px; border-radius:50%; border:4px solid #fff; background:#A1D377; cursor:pointer}
+.cam-shoot:disabled{opacity:.4; cursor:default}
+.cam-btn{min-height:44px; padding:0 16px; border:1px solid rgba(255,255,255,.4); border-radius:var(--r); background:none; color:#fff; font-weight:600; cursor:pointer}
+.cam-btn.done{background:#A1D377; border-color:#A1D377; color:#0D3932}
 .panel-foot{margin-top:auto; display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:16px 24px; border-top:1px solid var(--line); background:var(--bg); position:sticky; bottom:0}
 .panel-foot .spacer{flex:1}
 .confirm{display:flex; flex-wrap:wrap; align-items:center; gap:8px; font-size:.875rem; font-weight:600}
@@ -354,6 +369,16 @@ button,input,select,textarea{font:inherit; color:inherit; font-feature-settings:
   <div class="lb-top"><span id="lb-cap"></span><button type="button" class="lb-btn" id="lb-close" aria-label="Sluiten">×</button></div>
   <div class="lb-img"><img id="lb-img" alt=""></div>
   <div class="lb-nav"><button type="button" class="lb-btn" id="lb-prev" aria-label="Vorige foto">←</button><button type="button" class="lb-btn" id="lb-next" aria-label="Volgende foto">→</button></div>
+</div>
+
+<div class="cam" id="cam" hidden role="dialog" aria-modal="true" aria-label="Foto nemen">
+  <div class="cam-top"><span id="cam-teller">Richt de camera op de machine</span><button type="button" class="cam-btn" id="cam-wissel" hidden>Andere camera</button></div>
+  <div class="cam-view"><video id="cam-video" autoplay playsinline muted></video><p class="cam-msg" id="cam-msg" hidden></p><div class="flash" id="cam-flash"></div></div>
+  <div class="cam-bar">
+    <button type="button" class="cam-btn" id="cam-stop">Annuleren</button>
+    <button type="button" class="cam-shoot" id="cam-shoot" aria-label="Foto nemen"></button>
+    <button type="button" class="cam-btn done" id="cam-klaar">Klaar</button>
+  </div>
 </div>
 
 <input id="imp" class="sr" type="file" accept=".csv,text/csv" aria-label="Klantenlijst importeren">
@@ -842,7 +867,7 @@ function renderFotos() {
   $("ph-grid").innerHTML = F.fotos.map((f, i) => `<div class="ph${f.bezig ? " busy" : ""}">
       ${f.url ? `<img src="${esc(f.url)}" alt="Foto ${i + 1}">` : f.file ? `<img alt="Foto ${i + 1}" data-file="${esc(f.file)}">` : ""}
       ${f.bezig ? "" : `<button type="button" class="rm" data-rm="${i}" aria-label="Foto ${i + 1} verwijderen">×</button>`}
-    </div>`).join("") + `<label class="ph-add" for="f-fotos">+ Foto's toevoegen</label>`;
+    </div>`).join("") + (CAMERA ? `<button type="button" class="ph-add" data-cam>Foto nemen</button>` : "") + `<label class="ph-add" for="f-fotos">+ Foto's toevoegen</label>`;
   laadFotos($("ph-grid"));
   $("f-save").disabled = F.bezig > 0;
 }
@@ -857,6 +882,7 @@ $("sheet").addEventListener("click", e => {
     renderFotos();
     return;
   }
+  if (e.target.closest("[data-cam]")) return openCamera();
   if (e.target.id === "del-ask") return renderDelZone(true);
   if (e.target.id === "del-no") return renderDelZone(false);
   if (e.target.id === "del-yes") return verwijderMachine();
@@ -878,6 +904,86 @@ async function verklein(file) {
   throw new Error("formaat");
 }
 const extensie = blob => ({ "image/png": "png", "image/webp": "webp" }[blob.type] || "jpg");
+
+/* ---------- Camera van dit toestel ---------- */
+const CAMERA = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+const CAM = { stream: null, devices: [], index: 0, genomen: 0 };
+
+async function openCamera() {
+  if (!F) return;
+  CAM.genomen = 0;
+  $("cam-teller").textContent = "Richt de camera op de machine";
+  $("cam").hidden = false;
+  await startStream();
+}
+
+async function startStream(deviceId) {
+  stopStream();
+  const video = $("cam-video"), msg = $("cam-msg");
+  msg.hidden = true; video.hidden = false; $("cam-shoot").disabled = true;
+  try {
+    CAM.stream = await navigator.mediaDevices.getUserMedia({
+      video: deviceId ? { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+                      : { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false
+    });
+    if ($("cam").hidden) return stopStream(); // intussen gesloten
+    video.srcObject = CAM.stream;
+    await video.play().catch(() => {});
+    $("cam-shoot").disabled = false;
+    CAM.devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
+    const actief = CAM.stream.getVideoTracks()[0]?.getSettings().deviceId;
+    CAM.index = Math.max(0, CAM.devices.findIndex(d => d.deviceId === actief));
+    $("cam-wissel").hidden = CAM.devices.length < 2;
+  } catch (e) {
+    video.hidden = true; msg.hidden = false;
+    msg.textContent = e && e.name === "NotAllowedError"
+      ? "De camera is geblokkeerd. Klik op het slotje links in de adresbalk, zet Camera op Toestaan en probeer opnieuw."
+      : e && (e.name === "NotFoundError" || e.name === "OverconstrainedError")
+      ? "Er is geen camera gevonden op dit toestel. Voeg foto's toe via ‘Foto's toevoegen’."
+      : e && e.name === "NotReadableError"
+      ? "De camera wordt al gebruikt door een ander programma, bv. Teams. Sluit dat en probeer opnieuw."
+      : "De camera kon niet gestart worden. Voeg foto's toe via ‘Foto's toevoegen’.";
+  }
+}
+
+function stopStream() {
+  if (CAM.stream) CAM.stream.getTracks().forEach(t => t.stop());
+  CAM.stream = null;
+  $("cam-video").srcObject = null;
+}
+
+function closeCamera() { stopStream(); $("cam").hidden = true; }
+
+async function neemFoto() {
+  const video = $("cam-video");
+  if (!F || !CAM.stream || !video.videoWidth) return;
+  const s = Math.min(1, 1600 / Math.max(video.videoWidth, video.videoHeight));
+  const c = document.createElement("canvas");
+  c.width = Math.round(video.videoWidth * s); c.height = Math.round(video.videoHeight * s);
+  c.getContext("2d").drawImage(video, 0, 0, c.width, c.height);
+  const flash = $("cam-flash"); flash.classList.add("on"); requestAnimationFrame(() => requestAnimationFrame(() => flash.classList.remove("on")));
+  const blob = await new Promise(r => c.toBlob(r, "image/jpeg", 0.82));
+  if (!blob || !F) return;
+  F.fotos.push({ blob, url: URL.createObjectURL(blob) });
+  CAM.genomen++;
+  $("cam-teller").textContent = CAM.genomen === 1 ? "1 foto genomen" : `${CAM.genomen} foto's genomen`;
+  renderFotos();
+}
+
+$("cam-shoot").addEventListener("click", neemFoto);
+$("cam-klaar").addEventListener("click", closeCamera);
+$("cam-stop").addEventListener("click", () => {
+  // Annuleren: de foto's van deze camerasessie weer weghalen.
+  if (F && CAM.genomen) F.fotos.splice(F.fotos.length - CAM.genomen).forEach(f => URL.revokeObjectURL(f.url));
+  closeCamera();
+  if (F) renderFotos();
+});
+$("cam-wissel").addEventListener("click", () => {
+  if (CAM.devices.length < 2) return;
+  CAM.index = (CAM.index + 1) % CAM.devices.length;
+  startStream(CAM.devices[CAM.index].deviceId);
+});
 
 $("f-fotos").addEventListener("change", async e => {
   const files = [...e.target.files];
@@ -1005,6 +1111,11 @@ $("lb-next").addEventListener("click", () => { if (LB && LB.i < LB.fotos.length 
 $("lightbox").addEventListener("click", e => { if (e.target.id === "lightbox" || e.target.classList.contains("lb-img")) closeViewer(); });
 
 document.addEventListener("keydown", e => {
+  if (!$("cam").hidden) {
+    if (e.key === "Escape") closeCamera();
+    else if ((e.key === " " || e.key === "Enter") && e.target === document.body) { e.preventDefault(); neemFoto(); }
+    return;
+  }
   if (LB) {
     if (e.key === "Escape") closeViewer();
     else if (e.key === "ArrowLeft") $("lb-prev").click();
