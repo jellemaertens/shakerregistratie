@@ -268,7 +268,7 @@ button,input,select,textarea{font:inherit; color:inherit; font-feature-settings:
     <div class="map-info">
       <span>Map: <b id="map-naam"></b></span>
       <span id="bron"></span>
-      <span class="row-btns"><button type="button" class="btn-link" id="ververs">Vernieuwen</button><button type="button" class="btn-link" data-kies>Andere map kiezen</button></span>
+      <span class="row-btns"><button type="button" class="btn-link" id="ververs">Vernieuwen</button><button type="button" class="btn-link" data-import>Klantenlijst importeren</button><button type="button" class="btn-link" data-kies>Andere map kiezen</button></span>
     </div>
   </aside>
   <main class="detail" id="detail"><div class="detail-in"></div></main>
@@ -356,6 +356,7 @@ button,input,select,textarea{font:inherit; color:inherit; font-feature-settings:
   <div class="lb-nav"><button type="button" class="lb-btn" id="lb-prev" aria-label="Vorige foto">←</button><button type="button" class="lb-btn" id="lb-next" aria-label="Volgende foto">→</button></div>
 </div>
 
+<input id="imp" class="sr" type="file" accept=".csv,text/csv" aria-label="Klantenlijst importeren">
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
@@ -465,15 +466,40 @@ async function leesKlanten(dir) {
     else if (name.toLowerCase() === "klanten.json") json = await h.getFile();
   }
   if (csv) {
-    const [kop, ...rest] = parseCsv(await leesTekst(csv));
-    const ix = Object.fromEntries(kop.map((n, i) => [n.trim().toLowerCase(), i]));
-    if (!("naam" in ix)) throw { code: "geen-klanten" };
-    const v = (r, n) => (n in ix ? (r[ix[n]] || "") : "").trim();
+    const rijen = klantenUitCsv(await leesTekst(csv));
+    if (!rijen) throw { code: "geen-klanten" };
     state.bron = csv.name;
-    return rest.map(r => [v(r, "nummer"), v(r, "naam"), v(r, "groep"), v(r, "adres"), v(r, "postcode"), v(r, "gemeente"), v(r, "land"), v(r, "telefoon"), v(r, "email")]).filter(r => r[1]);
+    return rijen;
   }
   if (json) { state.bron = json.name; return JSON.parse(await leesTekst(json)); }
   throw { code: "geen-klanten" };
+}
+
+// Zet een klantenexport (puntkomma-gescheiden, met kolom "naam") om naar rijen; null als het geen klantenlijst is.
+function klantenUitCsv(text) {
+  const [kop, ...rest] = parseCsv(text);
+  if (!kop) return null;
+  const ix = Object.fromEntries(kop.map((n, i) => [n.trim().toLowerCase(), i]));
+  if (!("naam" in ix)) return null;
+  const v = (r, n) => (n in ix ? (r[ix[n]] || "") : "").trim();
+  const rijen = rest.map(r => [v(r, "nummer"), v(r, "naam"), v(r, "groep"), v(r, "adres"), v(r, "postcode"), v(r, "gemeente"), v(r, "land"), v(r, "telefoon"), v(r, "email")]).filter(r => r[1]);
+  return rijen.length ? rijen : null;
+}
+
+// Importeren: het gekozen bestand wordt ongewijzigd in de gedeelde map gezet, zodat iedereen dezelfde lijst ziet.
+async function importeerKlanten(file) {
+  const rijen = klantenUitCsv(await leesTekst(file));
+  if (!rijen) { toast("Dit bestand is geen klantenlijst. Kies de CSV-export met een kolom ‘naam’."); return; }
+  const vandaag = new Date().toISOString().slice(0, 10);
+  const naam = /^klanten.*\.csv$/i.test(file.name) ? file.name : `klanten-${vandaag}.csv`;
+  try {
+    await schrijfBestand(state.dir, naam, file);
+  } catch (e) {
+    toast("De klantenlijst kon niet in de map bewaard worden. Sta wijzigingen toe en probeer opnieuw.");
+    return;
+  }
+  await laadMap();
+  if (state.status === "ok") toast(`Klantenlijst geïmporteerd: ${state.klanten.length} klanten`);
 }
 
 // Rijen met hetzelfde klantnummer en adres vormen samen één winkel
@@ -576,6 +602,7 @@ async function ververs(handmatig) {
 setInterval(() => { if (document.visibilityState === "visible") ververs(false); }, 20000);
 window.addEventListener("focus", () => ververs(false));
 $("ververs").addEventListener("click", () => ververs(true));
+$("imp").addEventListener("change", e => { const f = e.target.files[0]; e.target.value = ""; if (f && state.dir) importeerKlanten(f); });
 
 /* ---------- Weergave ---------- */
 function render() {
@@ -604,8 +631,9 @@ function renderStart() {
     toestemming: `<h2>Verder met de map ${naam}</h2><p>Je browser vraagt opnieuw toestemming om de map te gebruiken. Dat is één klik.</p>
       <div class="start-actions"><button type="button" class="btn" id="go">Doorgaan</button><button type="button" class="btn-ghost" data-kies>Andere map kiezen</button></div>`,
     laden: `<h2>Map ${naam} lezen…</h2><p>Bij de eerste keer haalt OneDrive de bestanden op. Dat kan even duren.</p>`,
-    "geen-klanten": `<h2>Geen klantenlijst gevonden</h2><p>In de map ${naam} staat geen klantenlijst. Zet je export (bv. <code>klanten-2026-10-16.csv</code>) in de map en probeer opnieuw. Klopt de map niet? Kies dan de map <code>${esc(MAP_NAAM)}</code>.</p>
-      <div class="start-actions"><button type="button" class="btn" id="opnieuw">Opnieuw proberen</button><button type="button" class="btn-ghost" data-kies>Andere map kiezen</button></div>`,
+    "geen-klanten": `<h2>Importeer de klantenlijst</h2><p>In de map ${naam} staat nog geen klantenlijst. Kies je klantenexport (bv. <code>klanten-2026-10-16.csv</code>). De pagina bewaart ze in de gedeelde map, zodat ook je collega's ze zien.</p>
+      <p>Klopt de map niet? Kies dan de map <code>${esc(MAP_NAAM)}</code>.</p>
+      <div class="start-actions"><button type="button" class="btn" data-import>Klantenlijst importeren</button><button type="button" class="btn-ghost" data-kies>Andere map kiezen</button></div>`,
     fout: `<h2>Dat lukte niet</h2><p>${esc(state.fout)}</p>
       <div class="start-actions">${state.dir ? `<button type="button" class="btn" id="opnieuw">Opnieuw proberen</button>` : ""}<button type="button" class="btn-ghost" data-kies>Map kiezen</button></div>`
   };
@@ -747,9 +775,10 @@ function openKlant(key) {
   if (window.matchMedia("(max-width: 860px)").matches) window.scrollTo(0, 0);
 }
 document.addEventListener("click", e => {
-  const t = e.target.closest("[data-key],[data-add],[data-edit],[data-view],[data-kies],#back,#go,#opnieuw");
+  const t = e.target.closest("[data-key],[data-add],[data-edit],[data-view],[data-kies],[data-import],#back,#go,#opnieuw");
   if (!t) return;
   if (t.hasAttribute("data-kies")) return kiesMap();
+  if (t.hasAttribute("data-import")) return $("imp").click();
   if (t.id === "go") return geefToestemming();
   if (t.id === "opnieuw") return laadMap();
   if (t.id === "back") { state.sel = null; renderList(); renderDetail(); window.scrollTo(0, 0); return; }
