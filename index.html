@@ -44,7 +44,7 @@ h1,h2,h3,h4{margin:0; line-height:1.15; text-wrap:balance; font-weight:700}
 p{margin:0}
 button,input,select,textarea{font:inherit; color:inherit; font-feature-settings:"ss03"}
 :focus-visible{outline:2px solid var(--focus); outline-offset:2px}
-.sr{position:absolute!important; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap}
+.sr{position:absolute!important; left:0; width:1px; height:1px; margin:-1px; padding:0; border:0; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap}
 .num{font-variant-numeric:tabular-nums lining-nums}
 
 /* Kopband */
@@ -170,6 +170,7 @@ button,input,select,textarea{font:inherit; color:inherit; font-feature-settings:
 .panel-body{display:grid; gap:22px; padding:24px}
 .f-grid{display:grid; grid-template-columns:1fr 1fr; gap:18px 16px}
 .f{display:grid; gap:6px; min-width:0}
+.f.breed, .specs .breed{grid-column:1 / -1}
 .f label, .f .lbl, .seg legend{font-weight:600; font-size:.9375rem}
 .f input, .f textarea{width:100%; padding:10px 12px; border:1px solid var(--line-strong); border-radius:var(--r); background:var(--field)}
 .f input[aria-invalid="true"]{border-color:var(--danger); box-shadow:inset 0 0 0 1px var(--danger)}
@@ -274,7 +275,7 @@ button.ph-add{background:none; font:inherit; font-weight:600; font-size:.875rem}
   <aside class="side" aria-label="Klanten">
     <div class="side-tools">
       <label for="q" class="sr">Zoek een klant</label>
-      <input id="q" class="search" type="search" placeholder="Zoek op naam, gemeente of klantnummer" autocomplete="off">
+      <input id="q" class="search" type="search" placeholder="Zoek op naam, gemeente, klant- of serienummer" autocomplete="off">
       <div class="filters">
         <label for="groep" class="sr">Groep</label>
         <select id="groep"><option value="">Alle groepen</option></select>
@@ -315,6 +316,10 @@ button.ph-add{background:none; font:inherit; font-weight:600; font-size:.875rem}
           <label for="f-type">Type shaker</label>
           <input id="f-type" list="dl-type" autocomplete="off" placeholder="bv. HA 480">
           <p class="err" id="e-type"></p>
+        </div>
+        <div class="f breed">
+          <label for="f-serie">Serienummer <span class="opt">(optioneel)</span></label>
+          <input id="f-serie" autocomplete="off" spellcheck="false" placeholder="Zie het typeplaatje, bv. S0B2214">
         </div>
         <div class="f">
           <label for="f-jaar">Bouwjaar</label>
@@ -735,8 +740,10 @@ function renderStats() {
 
 function zichtbareKlanten() {
   const q = norm(state.q.trim());
+  // Zoeken kan ook op het serienummer van een machine: dan verschijnt de winkel waar die machine staat.
+  const viaSerie = new Set(q ? state.machines.filter(m => m.serienummer && norm(m.serienummer).includes(q)).map(m => state.byKey.get(m.klant)?.key || m.klant) : []);
   return state.klanten.filter(k =>
-    (!q || k.zoek.includes(q)) &&
+    (!q || k.zoek.includes(q) || viaSerie.has(k.key)) &&
     (!state.groep || k.groep === state.groep) &&
     (!state.metMachines || state.byKlant.has(k.key)));
 }
@@ -835,6 +842,7 @@ function machineCard(m) {
     <div class="m-body">
       <div><p class="m-merk">${esc(m.merk || "Merk onbekend")}</p><h4>${esc(m.type || "Type onbekend")}</h4></div>
       <dl class="specs">
+        <div class="breed"><dt>Serienummer</dt><dd>${m.serienummer ? esc(m.serienummer) : "–"}</dd></div>
         <div><dt>Bouwjaar</dt><dd>${m.bouwjaar ? esc(m.bouwjaar) : "–"}</dd></div>
         <div><dt>Aantal cycli</dt><dd>${Number.isFinite(m.cycli) ? fmtNum(m.cycli) : "–"}</dd></div>
         <div><dt>Algemene staat</dt><dd>${chip(m.staat)}</dd></div>
@@ -892,8 +900,10 @@ function openForm(klantKey, m) {
   F = { klantKey, id: m ? m.id : null, orig: m, fotos: (m && Array.isArray(m.fotos) ? m.fotos : []).map(file => ({ file })), weg: [], bezig: 0 };
   $("f-klant").textContent = k ? k.naam : (m && m.klantnaam) || "";
   $("f-title").textContent = m ? "Machine bewerken" : "Machine toevoegen";
+  $("f-save").textContent = "Bewaren";
   $("f-merk").value = m?.merk || "";
   $("f-type").value = m?.type || "";
+  $("f-serie").value = m?.serienummer || "";
   $("f-jaar").value = m?.bouwjaar ?? "";
   $("f-cycli").value = m?.cycli ?? "";
   $("f-note").value = m?.opmerking || "";
@@ -1160,7 +1170,7 @@ form.addEventListener("submit", async e => {
     }
     const data = {
       id, klant: F.klantKey, klantnummer: k ? k.nr : (F.orig?.klantnummer || ""), klantnaam: k ? k.naam : (F.orig?.klantnaam || ""),
-      merk, type, bouwjaar: jaar, cycli, staat, klemplaat, opmerking: $("f-note").value.trim(), fotos,
+      merk, type, serienummer: $("f-serie").value.trim(), bouwjaar: jaar, cycli, staat, klemplaat, opmerking: $("f-note").value.trim(), fotos,
       createdAt: F.orig?.createdAt || nu, updatedAt: nu
     };
     await schrijfBestand(state.machinesDir, id + ".json", JSON.stringify(data, null, 2));
