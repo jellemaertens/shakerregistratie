@@ -1,4 +1,4 @@
-# Shakerregistratie
+# Machine database
 
 Webpagina om per klant te registreren welke shakers er in de winkel staan: merk, type, bouwjaar, aantal cycli, algemene staat, staat van de klemplaat en foto's.
 
