@@ -175,6 +175,16 @@ button,input,select,textarea{font:inherit; color:inherit; font-feature-settings:
 .f-grid{display:grid; grid-template-columns:1fr 1fr; gap:18px 16px}
 .f{display:grid; gap:6px; min-width:0}
 .f.breed, .specs .breed{grid-column:1 / -1}
+.velden{display:grid; gap:22px}
+.soort-opts{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+.soort-opts input{position:absolute; opacity:0; width:1px; height:1px}
+.soort-opts label{display:grid; gap:2px; align-content:start; padding:14px 16px; border:1px solid var(--line-strong); border-radius:var(--r); background:var(--field); cursor:pointer}
+.soort-opts label b{font-size:1.0625rem}
+.soort-opts label span{font-size:.8125rem; color:var(--muted)}
+.soort-opts label:hover{background:var(--hover)}
+.soort-opts input:checked + label{border-color:var(--accent); box-shadow:inset 0 0 0 2px var(--accent); background:var(--hover)}
+.soort-opts input:focus-visible + label{outline:2px solid var(--focus); outline-offset:2px}
+.soort-tag{display:inline-block; margin-right:8px; padding:1px 7px; border-radius:var(--r); background:var(--panel); color:var(--fg)}
 .f label, .f .lbl, .seg legend{font-weight:600; font-size:.9375rem}
 .f input, .f textarea{width:100%; padding:10px 12px; border:1px solid var(--line-strong); border-radius:var(--r); background:var(--field)}
 .f input[aria-invalid="true"]{border-color:var(--danger); box-shadow:inset 0 0 0 1px var(--danger)}
@@ -267,7 +277,7 @@ button.ph-add{background:none; font:inherit; font-weight:600; font-size:.875rem}
       </button>
       <div class="top-text">
         <h1>Machine database</h1>
-        <p>Welke shakers staan er bij onze klanten, en in welke staat?</p>
+        <p>Welke shakers, mixers en dispensers staan er bij onze klanten, en in welke staat?</p>
       </div>
     </div>
     <dl class="stats" id="stats">
@@ -315,6 +325,16 @@ button.ph-add{background:none; font:inherit; font-weight:600; font-size:.875rem}
       <button type="button" class="x" data-close aria-label="Sluiten">×</button>
     </div>
     <div class="panel-body">
+      <fieldset class="seg">
+        <legend>Soort machine</legend>
+        <div class="soort-opts">
+          <input type="radio" name="soort" id="f-soort-shaker" value="shaker"><label for="f-soort-shaker"><b>Shaker / mixer</b><span>Schud- of mengmachine</span></label>
+          <input type="radio" name="soort" id="f-soort-dispenser" value="dispenser"><label for="f-soort-dispenser"><b>Dispenser</b><span>Doseermachine voor kleurpasta's</span></label>
+        </div>
+        <p class="err" id="e-soort"></p>
+      </fieldset>
+
+      <div class="velden" id="f-velden">
       <div class="f-grid">
         <div class="f">
           <label for="f-merk">Merk</label>
@@ -322,7 +342,7 @@ button.ph-add{background:none; font:inherit; font-weight:600; font-size:.875rem}
           <p class="err" id="e-merk"></p>
         </div>
         <div class="f">
-          <label for="f-type">Type shaker</label>
+          <label for="f-type" id="l-type">Type shaker</label>
           <input id="f-type" list="dl-type" autocomplete="off" placeholder="bv. HA 480">
           <p class="err" id="e-type"></p>
         </div>
@@ -335,7 +355,7 @@ button.ph-add{background:none; font:inherit; font-weight:600; font-size:.875rem}
           <input id="f-jaar" type="number" inputmode="numeric" min="1970" step="1" placeholder="bv. 2016">
           <p class="err" id="e-jaar"></p>
         </div>
-        <div class="f">
+        <div class="f" data-soort="shaker">
           <label for="f-cycli">Aantal cycli</label>
           <input id="f-cycli" type="number" inputmode="numeric" min="0" step="1" placeholder="Stand van de teller">
           <p class="err" id="e-cycli"></p>
@@ -348,10 +368,22 @@ button.ph-add{background:none; font:inherit; font-weight:600; font-size:.875rem}
         <p class="err" id="e-staat"></p>
       </fieldset>
 
-      <fieldset class="seg">
+      <fieldset class="seg" data-soort="shaker">
         <legend>Staat klemplaat</legend>
         <div class="seg-opts" id="seg-klemplaat"></div>
         <p class="err" id="e-klemplaat"></p>
+      </fieldset>
+
+      <fieldset class="seg" data-soort="dispenser">
+        <legend>Staat nozzels</legend>
+        <div class="seg-opts" id="seg-nozzels"></div>
+        <p class="err" id="e-nozzels"></p>
+      </fieldset>
+
+      <fieldset class="seg" data-soort="dispenser">
+        <legend>Staat borstel</legend>
+        <div class="seg-opts" id="seg-borstel"></div>
+        <p class="err" id="e-borstel"></p>
       </fieldset>
 
       <div class="f">
@@ -363,8 +395,9 @@ button.ph-add{background:none; font:inherit; font-weight:600; font-size:.875rem}
         <span class="lbl">Foto's <span class="opt">(optioneel)</span></span>
         <input id="f-fotos" class="sr" type="file" accept="image/*" multiple>
         <div class="ph-grid" id="ph-grid"></div>
-        <p class="hint">Neem een foto van de machine, het typeplaatje en de klemplaat.</p>
+        <p class="hint" id="f-foto-hint">Neem een foto van de machine, het typeplaatje en de klemplaat.</p>
         <p class="err" id="e-foto"></p>
+      </div>
       </div>
 
     </div>
@@ -612,7 +645,9 @@ function indexMachines() {
   }
   for (const list of state.byKlant.values()) list.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 }
-const heeftAandacht = m => AANDACHT.has(m.staat) || AANDACHT.has(m.klemplaat);
+const SOORTEN = { shaker: "Shaker / mixer", dispenser: "Dispenser" };
+const soortVan = m => m && m.soort === "dispenser" ? "dispenser" : "shaker";
+const heeftAandacht = m => [m.staat, m.klemplaat, m.nozzels, m.borstel].some(v => AANDACHT.has(v));
 
 async function schrijfBestand(dir, name, inhoud) {
   const h = await dir.getFileHandle(name, { create: true });
@@ -797,14 +832,14 @@ function overzichtView() {
   let body;
   if (!state.machines.length) {
     body = `<div class="empty"><strong>Nog geen machines geregistreerd</strong>
-      <ol class="steps"><li>Zoek links de klant op.</li><li>Klik op <b>Machine toevoegen</b>.</li><li>Vul merk, type, bouwjaar, cycli en de staat in, en voeg foto's toe.</li></ol>
-      <p>Elke shaker registreer je apart. Staan er twee bij dezelfde klant? Dan voeg je er twee toe.</p></div>`;
+      <ol class="steps"><li>Zoek links de klant op.</li><li>Klik op <b>Machine toevoegen</b>.</li><li>Kies <b>Shaker / mixer</b> of <b>Dispenser</b>, vul de gegevens in en voeg foto's toe.</li></ol>
+      <p>Elke machine registreer je apart. Staan er twee bij dezelfde klant? Dan voeg je er twee toe.</p></div>`;
   } else {
     const aandacht = state.machines.filter(heeftAandacht).sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
     const recent = [...state.machines].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, 8);
     body = `
       <section><div class="sec-head"><h3>Aandacht nodig</h3><span>${aandacht.length ? `${aandacht.length} machine${aandacht.length > 1 ? "s" : ""} in matige of slechte staat` : ""}</span></div>
-        ${aandacht.length ? rows(aandacht) : `<p class="hint">Alle geregistreerde machines en klemplaten zijn in goede of redelijke staat.</p>`}</section>
+        ${aandacht.length ? rows(aandacht) : `<p class="hint">Alle geregistreerde machines zijn in goede of redelijke staat.</p>`}</section>
       <section><div class="sec-head"><h3>Laatst bijgewerkt</h3></div>${rows(recent)}</section>`;
   }
   return `<div class="intro"><h2>Overzicht</h2><p>Kies links een klant om de shakers te bekijken of een nieuwe machine te registreren.</p>${legend}</div>${body}`;
@@ -814,8 +849,10 @@ function rows(list) {
   return `<ul class="rows">${list.map(m => {
     const k = state.byKey.get(m.klant);
     return `<li><button type="button" class="row" data-key="${esc(m.klant)}">
-      <span><b>${esc(k ? k.naam : m.klantnaam || "Onbekende klant")}</b><span class="sub">${esc([m.merk, m.type].filter(Boolean).join(" "))}${m.bouwjaar ? " · " + esc(m.bouwjaar) : ""}</span></span>
-      <span class="st"><span>Staat ${chip(m.staat)}</span><span>Klemplaat ${chip(m.klemplaat)}</span></span>
+      <span><b>${esc(k ? k.naam : m.klantnaam || "Onbekende klant")}</b><span class="sub">${SOORTEN[soortVan(m)]} · ${esc([m.merk, m.type].filter(Boolean).join(" "))}${m.bouwjaar ? " · " + esc(m.bouwjaar) : ""}</span></span>
+      <span class="st"><span>Staat ${chip(m.staat)}</span>${soortVan(m) === "dispenser"
+        ? `<span>Nozzels ${chip(m.nozzels)}</span><span>Borstel ${chip(m.borstel)}</span>`
+        : `<span>Klemplaat ${chip(m.klemplaat)}</span>`}</span>
       <span class="when">${m.updatedAt ? fmtDatum(m.updatedAt) : ""}</span>
     </button></li>`;
   }).join("")}</ul>`;
@@ -826,7 +863,7 @@ function klantView(k) {
   const adres = [k.adres, [k.pc, k.gemeente].filter(Boolean).join(" "), k.land && k.land !== "BE" ? k.land : ""].filter(Boolean).join(", ");
   const lijst = ms.length
     ? `<div class="machines">${ms.map(machineCard).join("")}</div>`
-    : `<div class="empty"><strong>Nog geen machines bij deze klant</strong><p>Voeg de eerste shaker toe met de knop hierboven.</p></div>`;
+    : `<div class="empty"><strong>Nog geen machines bij deze klant</strong><p>Voeg de eerste machine toe met de knop hierboven.</p></div>`;
   return `<button type="button" class="back" id="back">← Alle klanten</button>
     <section class="k-head">
       <div><h2>${esc(k.naam)}</h2>${k.groep ? `<span class="tag">${esc(k.groep)}</span>` : ""}</div>
@@ -853,16 +890,22 @@ function machineCard(m) {
         <img alt="" data-file="${esc(fotos[0])}">${fotos.length > 1 ? `<span class="cnt">${fotos.length} foto's</span>` : ""}</button>`
     : `<div class="m-foto none">Geen foto</div>`;
   const door = m.updatedBy || m.createdBy;
+  const disp = soortVan(m) === "dispenser";
+  const eigen = disp
+    ? `<div><dt>Algemene staat</dt><dd>${chip(m.staat)}</dd></div>
+        <div><dt>Staat nozzels</dt><dd>${chip(m.nozzels)}</dd></div>
+        <div><dt>Staat borstel</dt><dd>${chip(m.borstel)}</dd></div>`
+    : `<div><dt>Aantal cycli</dt><dd>${Number.isFinite(m.cycli) ? fmtNum(m.cycli) : "–"}</dd></div>
+        <div><dt>Algemene staat</dt><dd>${chip(m.staat)}</dd></div>
+        <div><dt>Staat klemplaat</dt><dd>${chip(m.klemplaat)}</dd></div>`;
   return `<article class="m-card">
     ${foto}
     <div class="m-body">
-      <div><p class="m-merk">${esc(m.merk || "Merk onbekend")}</p><h4>${esc(m.type || "Type onbekend")}</h4></div>
+      <div><p class="m-merk"><span class="soort-tag">${SOORTEN[soortVan(m)]}</span>${esc(m.merk || "Merk onbekend")}</p><h4>${esc(m.type || "Type onbekend")}</h4></div>
       <dl class="specs">
         <div class="breed"><dt>Serienummer</dt><dd>${m.serienummer ? esc(m.serienummer) : "–"}</dd></div>
         <div><dt>Bouwjaar</dt><dd>${m.bouwjaar ? esc(m.bouwjaar) : "–"}</dd></div>
-        <div><dt>Aantal cycli</dt><dd>${Number.isFinite(m.cycli) ? fmtNum(m.cycli) : "–"}</dd></div>
-        <div><dt>Algemene staat</dt><dd>${chip(m.staat)}</dd></div>
-        <div><dt>Staat klemplaat</dt><dd>${chip(m.klemplaat)}</dd></div>
+        ${eigen}
       </dl>
       ${m.opmerking ? `<p class="m-note">${esc(m.opmerking)}</p>` : ""}
     </div>
@@ -905,9 +948,27 @@ let F = null; // huidige formuliertoestand
 function segHTML(name) {
   return STATEN.map(([v, l]) => `<input type="radio" name="${name}" id="f-${name}-${v}" value="${v}"><label for="f-${name}-${v}"><span class="dot d-${v}"></span>${l}</label>`).join("");
 }
-$("seg-staat").innerHTML = segHTML("staat");
-$("seg-klemplaat").innerHTML = segHTML("klemplaat");
+for (const naam of ["staat", "klemplaat", "nozzels", "borstel"]) $("seg-" + naam).innerHTML = segHTML(naam);
 $("f-jaar").max = JAAR_NU;
+
+// Toont de velden die bij de gekozen soort machine horen; zonder keuze blijven ze verborgen.
+function zetSoort(soort) {
+  $("f-velden").hidden = !soort;
+  form.querySelectorAll("[data-soort]").forEach(el => { el.hidden = el.dataset.soort !== soort; });
+  const disp = soort === "dispenser";
+  $("l-type").textContent = disp ? "Type dispenser" : "Type shaker";
+  $("f-type").placeholder = disp ? "Type of model" : "bv. HA 480";
+  if (disp) $("f-type").removeAttribute("list"); else $("f-type").setAttribute("list", "dl-type");
+  $("f-note").placeholder = disp ? "bv. nozzel lekt of borstel is versleten" : "bv. klemplaat slipt bij grote potten";
+  $("f-foto-hint").textContent = `Neem een foto van de machine, het typeplaatje en ${disp ? "de nozzels" : "de klemplaat"}.`;
+}
+form.addEventListener("change", e => {
+  if (e.target.name !== "soort") return;
+  $("e-soort").textContent = "";
+  const eerste = $("f-velden").hidden;
+  zetSoort(e.target.value);
+  if (eerste) $("f-merk").focus();
+});
 
 function openForm(klantKey, m) {
   const k = state.byKey.get(klantKey);
@@ -923,14 +984,18 @@ function openForm(klantKey, m) {
   $("f-jaar").value = m?.bouwjaar ?? "";
   $("f-cycli").value = m?.cycli ?? "";
   $("f-note").value = m?.opmerking || "";
-  for (const name of ["staat", "klemplaat"]) form.querySelectorAll(`input[name="${name}"]`).forEach(r => { r.checked = !!m && r.value === m[name]; });
+  for (const name of ["staat", "klemplaat", "nozzels", "borstel"]) form.querySelectorAll(`input[name="${name}"]`).forEach(r => { r.checked = !!m && r.value === m[name]; });
+  // Bij een nieuwe machine kies je eerst de soort; een bestaande machine zonder soort is een shaker / mixer.
+  const soort = m ? soortVan(m) : "";
+  form.querySelectorAll('input[name="soort"]').forEach(r => { r.checked = r.value === soort; });
+  zetSoort(soort);
   form.querySelectorAll(".err, #e-form").forEach(el => el.textContent = "");
   form.querySelectorAll("[aria-invalid]").forEach(el => el.removeAttribute("aria-invalid"));
   renderDelZone(false);
   renderFotos();
   $("sheet").hidden = false;
   document.body.style.overflow = "hidden";
-  $("f-merk").focus();
+  (m ? $("f-merk") : $("f-soort-shaker")).focus();
 }
 
 function closeForm() {
@@ -1130,18 +1195,26 @@ function veldFout(id, msg) {
 form.addEventListener("submit", async e => {
   e.preventDefault();
   if (!F || F.bezig > 0) return;
+  const gekozen = n => form.querySelector(`input[name="${n}"]:checked`)?.value || "";
+  const soort = gekozen("soort");
+  if (!soort) { veldFout("soort", "Kies eerst of het een shaker / mixer of een dispenser is."); return; }
+  const disp = soort === "dispenser";
   const merk = $("f-merk").value.trim(), type = $("f-type").value.trim();
   const jaarTxt = $("f-jaar").value.trim(), cycliTxt = $("f-cycli").value.trim();
   const jaar = jaarTxt ? Number(jaarTxt) : null, cycli = cycliTxt ? Number(cycliTxt) : null;
-  const staat = form.querySelector('input[name="staat"]:checked')?.value || "";
-  const klemplaat = form.querySelector('input[name="klemplaat"]:checked')?.value || "";
+  const staat = gekozen("staat"), klemplaat = gekozen("klemplaat"), nozzels = gekozen("nozzels"), borstel = gekozen("borstel");
   let fout = false;
   fout = veldFout("merk", merk ? "" : "Vul het merk in.") || fout;
-  fout = veldFout("type", type ? "" : "Vul het type shaker in.") || fout;
+  fout = veldFout("type", type ? "" : `Vul het type ${disp ? "dispenser" : "shaker"} in.`) || fout;
   fout = veldFout("jaar", jaar === null || (Number.isInteger(jaar) && jaar >= 1970 && jaar <= JAAR_NU) ? "" : `Geef een jaartal tussen 1970 en ${JAAR_NU}.`) || fout;
-  fout = veldFout("cycli", cycli === null || (Number.isInteger(cycli) && cycli >= 0) ? "" : "Geef een geheel getal, 0 of meer.") || fout;
   fout = veldFout("staat", staat ? "" : "Kies de algemene staat.") || fout;
-  fout = veldFout("klemplaat", klemplaat ? "" : "Kies de staat van de klemplaat.") || fout;
+  if (disp) {
+    fout = veldFout("nozzels", nozzels ? "" : "Kies de staat van de nozzels.") || fout;
+    fout = veldFout("borstel", borstel ? "" : "Kies de staat van de borstel.") || fout;
+  } else {
+    fout = veldFout("cycli", cycli === null || (Number.isInteger(cycli) && cycli >= 0) ? "" : "Geef een geheel getal, 0 of meer.") || fout;
+    fout = veldFout("klemplaat", klemplaat ? "" : "Kies de staat van de klemplaat.") || fout;
+  }
   if (fout) { form.querySelector('[aria-invalid="true"], .err:not(:empty)')?.scrollIntoView({ block: "center" }); return; }
 
   // Werd deze machine intussen op een ander toestel aangepast of verwijderd? Dan eerst vragen of je toch wil overschrijven.
@@ -1185,8 +1258,10 @@ form.addEventListener("submit", async e => {
       fotos.push(`${winkelMap}/${naam}`);
     }
     const data = {
-      id, klant: F.klantKey, klantnummer: k ? k.nr : (F.orig?.klantnummer || ""), klantnaam: k ? k.naam : (F.orig?.klantnaam || ""),
-      merk, type, serienummer: $("f-serie").value.trim(), bouwjaar: jaar, cycli, staat, klemplaat, opmerking: $("f-note").value.trim(), fotos,
+      id, soort, klant: F.klantKey, klantnummer: k ? k.nr : (F.orig?.klantnummer || ""), klantnaam: k ? k.naam : (F.orig?.klantnaam || ""),
+      merk, type, serienummer: $("f-serie").value.trim(), bouwjaar: jaar, staat,
+      ...(disp ? { nozzels, borstel } : { cycli, klemplaat }),
+      opmerking: $("f-note").value.trim(), fotos,
       createdAt: F.orig?.createdAt || nu, updatedAt: nu
     };
     await schrijfBestand(state.machinesDir, id + ".json", JSON.stringify(data, null, 2));
